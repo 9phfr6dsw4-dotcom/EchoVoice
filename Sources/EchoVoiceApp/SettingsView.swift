@@ -6,8 +6,8 @@ struct SettingsView: View {
 
     var body: some View {
         @Bindable var model = model
-        Page(title: "Settings", subtitle: "Quality, where recordings go, and how EchoVoice uses your Mac's memory.") {
-            GroupBox("Voice model: Breeze TTS 2") {
+        Page(title: "Settings", subtitle: "Quality, where audio is saved, and how EchoVoice uses your Mac's memory.") {
+            GroupBox("Quality & speed") {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(ModelQuality.allCases) { quality in
                         qualityRow(quality)
@@ -15,7 +15,7 @@ struct SettingsView: View {
                     if case .downloading(let fraction) = model.modelState {
                         DownloadProgressRow(fraction: fraction)
                     }
-                    Caption("Changing quality applies to your next recording. A quality that isn't on this Mac yet is downloaded once.")
+                    Caption("Applies to your next generation. An option that isn't on this Mac yet is downloaded once. All three use the Breeze TTS 2 voice model.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
@@ -30,15 +30,15 @@ struct SettingsView: View {
                         Button("Change…") { model.chooseOutputFolder() }
                         Button("Open") { model.showOutputFolder() }
                     }
-                    Toggle("Play each recording when it's finished", isOn: $model.playWhenDone)
-                    Caption("Recordings are 24 kHz WAV files, named with the voice and the time they were made.")
+                    Toggle("Play new audio when it's ready", isOn: $model.playWhenDone)
+                    Caption("Audio is saved as 24 kHz WAV files, named with the voice and the time it was generated.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
             }
             GroupBox("Memory") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Picker("Release the model's memory after", selection: $model.unloadAfterMinutes) {
+                    Picker("Free up memory after", selection: $model.unloadAfterMinutes) {
                         Text("5 minutes idle").tag(5)
                         Text("10 minutes idle").tag(10)
                         Text("30 minutes idle").tag(30)
@@ -49,19 +49,23 @@ struct SettingsView: View {
                         Text(memoryStatus)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Release Memory Now") { model.freeMemory() }
+                        Button("Free up memory now") { model.freeMemory() }
                             .disabled(model.modelState != .ready || model.isGenerating)
                     }
-                    Caption("While loaded, the model keeps your next recording quick. Released, it uses no memory and loads again (a few seconds) when needed.")
+                    Caption("Freeing memory unloads the voice model. It loads again, in a few seconds, before your next generation.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
             }
-            GroupBox("About") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("EchoVoice runs Breeze TTS 2 by BreezeBlue entirely on this Mac with Apple's MLX. Breeze TTS 2 is licensed for personal, non-commercial use; its model card has the details.")
+            GroupBox("Privacy") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Everything is processed on this Mac. Your voices, scripts and audio are never uploaded.", systemImage: "lock.shield")
                         .fixedSize(horizontal: false, vertical: true)
-                    Caption("No account, no cloud, no tracking. The internet is used only to download the model.")
+                    Label("The internet is used only to download the voice model.", systemImage: "arrow.down.circle")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Label("No account, no analytics, no tracking.", systemImage: "eye.slash")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Caption("EchoVoice runs Breeze TTS 2 by BreezeBlue with Apple's MLX. Breeze TTS 2 is licensed for personal, non-commercial use; its model card has the details.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)

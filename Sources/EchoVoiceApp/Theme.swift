@@ -24,10 +24,12 @@ struct PageHeader: View {
     }
 }
 
-/// A scrolling page: large title, subtitle, content, privacy footer.
+/// A scrolling page: large title, subtitle, content, and a short privacy note (pages that show
+/// their own footer turn it off).
 struct Page<Content: View>: View {
     let title: String
     let subtitle: String
+    var showsPrivacyFooter = true
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -35,7 +37,9 @@ struct Page<Content: View>: View {
             VStack(alignment: .leading, spacing: 24) {
                 PageHeader(title: title, subtitle: subtitle)
                 content()
-                PrivacyFooter()
+                if showsPrivacyFooter {
+                    PrivacyFooter()
+                }
             }
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -46,7 +50,7 @@ struct Page<Content: View>: View {
 
 struct PrivacyFooter: View {
     var body: some View {
-        Label("Your voices, scripts and recordings stay on this Mac. Nothing is uploaded.", systemImage: "lock.shield")
+        Label("Processed on your Mac", systemImage: "checkmark.shield")
             .font(.footnote)
             .foregroundStyle(.secondary)
     }
@@ -91,6 +95,9 @@ struct WarningLabel: View {
 struct MessageBar: View {
     let text: String
     let isError: Bool
+    /// An optional button such as "Undo".
+    var actionTitle: String? = nil
+    var action: () -> Void = {}
     let dismiss: () -> Void
 
     var body: some View {
@@ -100,6 +107,10 @@ struct MessageBar: View {
             Text(text)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+            }
             Button("Dismiss", action: dismiss)
                 .buttonStyle(.borderless)
         }

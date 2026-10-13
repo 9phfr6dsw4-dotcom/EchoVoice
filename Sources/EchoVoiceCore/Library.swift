@@ -72,19 +72,29 @@ public enum ModelQuality: String, Codable, CaseIterable, Identifiable, Sendable 
         }
     }
 
+    /// The name shown in Settings ("Quality & speed").
     public var title: String {
         switch self {
-        case .standard: return "Standard (recommended)"
-        case .best: return "Best quality (slower)"
-        case .faster: return "Faster"
+        case .standard: return "Balanced (recommended)"
+        case .best: return "Best quality"
+        case .faster: return "Fastest"
+        }
+    }
+
+    /// The name without "(recommended)", for use inside sentences.
+    public var shortTitle: String {
+        switch self {
+        case .standard: return "Balanced"
+        case .best: return "Best quality"
+        case .faster: return "Fastest"
         }
     }
 
     public var detail: String {
         switch self {
-        case .standard: return "Sounds like Best quality to most ears, at about twice the speed. About 4 GB of memory while in use."
-        case .best: return "The full model. Slowest, about 7 GB of memory while in use."
-        case .faster: return "The quickest and smallest. You may hear a small drop in quality. About 3 GB of memory."
+        case .standard: return "8-bit model. Sounds like Best quality to most ears at about twice the speed. Uses about 4 GB of memory while loaded."
+        case .best: return "The full model (bf16). The slowest option, using about 7 GB of memory while loaded."
+        case .faster: return "4-bit model. The quickest and smallest; you may hear a small drop in quality. Uses about 3 GB of memory."
         }
     }
 }
@@ -231,6 +241,34 @@ public enum FileNaming {
             number += 1
         }
         return candidate
+    }
+}
+
+public enum ScriptStats {
+    /// Words in a script, for the counter beside the Script label. Chinese and Japanese characters,
+    /// which aren't separated by spaces, count one word each.
+    public static func wordCount(_ text: String) -> Int {
+        var count = 0
+        for token in text.split(whereSeparator: { $0.isWhitespace }) {
+            let wide = token.unicodeScalars.filter(isWide).count
+            let rest = token.unicodeScalars.contains { !isWide($0) && CharacterSet.alphanumerics.contains($0) }
+            count += wide + (rest ? 1 : 0)
+        }
+        return count
+    }
+
+    /// "15 words", "1 word", or "" for an empty script.
+    public static func wordLabel(_ text: String) -> String {
+        let count = wordCount(text)
+        guard count > 0 else { return "" }
+        return count == 1 ? "1 word" : "\(count.formatted()) words"
+    }
+
+    private static func isWide(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xF900...0xFAFF: return true
+        default: return false
+        }
     }
 }
 

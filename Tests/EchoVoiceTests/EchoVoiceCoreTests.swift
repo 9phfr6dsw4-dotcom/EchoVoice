@@ -182,6 +182,23 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(FileNaming.unique("b.wav", in: folder, exists: { taken.contains($0.path) }).path, "/x/b.wav")
     }
 
+    func testWordCount() {
+        let script = "Welcome back. Today, I’m sharing a few ideas I’ve been thinking about. Let’s get started."
+        XCTAssertEqual(ScriptStats.wordCount(script), 15)
+        XCTAssertEqual(ScriptStats.wordLabel(script), "15 words")
+        XCTAssertEqual(ScriptStats.wordLabel("Hello"), "1 word")
+        XCTAssertEqual(ScriptStats.wordLabel("  \n "), "")
+        XCTAssertEqual(ScriptStats.wordCount("one — two\n\nthree"), 3)
+        XCTAssertEqual(ScriptStats.wordCount("你好。我很好！"), 5)
+        XCTAssertEqual(ScriptStats.wordCount("Breeze说你好"), 4)
+    }
+
+    func testQualityNames() {
+        XCTAssertEqual(ModelQuality.allCases.map(\.title), ["Balanced (recommended)", "Best quality", "Fastest"])
+        XCTAssertEqual(ModelQuality.standard.shortTitle, "Balanced")
+        XCTAssertEqual(ModelQuality.standard.repository, "mlx-community/Breeze-TTS-2-mlx-8bit")
+    }
+
     func testClockText() {
         XCTAssertEqual(TimeText.clock(7.4), "0:07")
         XCTAssertEqual(TimeText.clock(65), "1:05")

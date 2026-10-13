@@ -4,33 +4,33 @@ import Foundation
 import Observation
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case write, voices, history, settings
+    case generate, voices, recordings, settings
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .write: return "Write"
+        case .generate: return "Generate"
         case .voices: return "Voices"
-        case .history: return "History"
+        case .recordings: return "Recordings"
         case .settings: return "Settings"
         }
     }
 
     var symbol: String {
         switch self {
-        case .write: return "text.bubble"
+        case .generate: return "waveform"
         case .voices: return "person.wave.2"
-        case .history: return "clock.arrow.circlepath"
+        case .recordings: return "tray.full"
         case .settings: return "gearshape"
         }
     }
 
     var shortcut: Character {
         switch self {
-        case .write: return "1"
+        case .generate: return "1"
         case .voices: return "2"
-        case .history: return "3"
+        case .recordings: return "3"
         case .settings: return "4"
         }
     }
@@ -56,7 +56,7 @@ struct GenerationProgress: Equatable {
 @MainActor
 @Observable
 final class AppModel {
-    var section: AppSection = .write
+    var section: AppSection = .generate
     var statusMessage: String?
     var errorMessage: String?
 
@@ -65,7 +65,7 @@ final class AppModel {
     private(set) var progress: GenerationProgress?
     private(set) var lastRecording: HistoryItem?
 
-    // The Write page, kept between launches.
+    // The Generate page, kept between launches.
     var script: String {
         get { storedScript }
         set { storedScript = newValue; defaults.set(newValue, forKey: Keys.script) }
@@ -208,25 +208,25 @@ final class AppModel {
 
     var isGenerating: Bool { generationTask != nil }
 
-    /// Makes a recording of the Write page's script in the selected voice.
+    /// Generates audio from the Generate page's script in the selected voice.
     func generate() {
         guard let voice = selectedVoice else {
-            errorMessage = "Add a voice first (Voices → Add Voice)."
+            errorMessage = "Add a voice first (Voices → Add Voice…)."
             return
         }
         start(script: script, direction: direction, voice: voice, seed: UInt64.random(in: 0 ... UInt64.max), quality: quality)
     }
 
-    /// Makes a recording again from History: the same take (same seed and model quality) or a new one.
+    /// Generates a recording again from Recordings: the same take (same seed and model quality) or a new one.
     func regenerate(_ item: HistoryItem, sameTake: Bool) {
         guard let voice = library.voice(item.voiceID) else {
-            errorMessage = "The voice “\(item.voiceName)” was deleted, so this recording can't be made again."
+            errorMessage = "The voice “\(item.voiceName)” was deleted, so this audio can't be generated again."
             return
         }
         script = item.script
         direction = item.direction ?? ""
         selectedVoiceID = voice.id
-        section = .write
+        section = .generate
         start(script: item.script, direction: item.direction ?? "", voice: voice,
               seed: sameTake ? item.seed : UInt64.random(in: 0 ... UInt64.max),
               quality: sameTake ? item.quality : quality)
@@ -239,7 +239,7 @@ final class AppModel {
     private func start(script: String, direction: String, voice: Voice, seed: UInt64, quality: ModelQuality) {
         guard generationTask == nil else { return }
         guard downloadTask == nil else {
-            errorMessage = "The voice model is still downloading. Make the recording when the download finishes."
+            errorMessage = "The voice model is still downloading. Generate audio when the download finishes."
             return
         }
         let plan: GenerationPlan
@@ -310,9 +310,42 @@ final class AppModel {
             if Task.isCancelled {
                 statusMessage = "Stopped. Nothing was saved."
             } else {
-                errorMessage = "Couldn't make the recording: \(error.localizedDescription)"
+                errorMessage = "Couldn't generate audio: \(error.localizedDescription)"
             }
         }
+    }
+
+    // MARK: New script
+
+    /// What New Script cleared, so its "Undo" can put it back.
+    private var newScriptUndo: (message: String, script: String, direction: String)?
+
+    /// True while the "New script started." message (with its Undo button) is showing.
+    var canUndoNewScript: Bool {
+        guard let undo = newScriptUndo else { return false }
+        return undo.message == statusMessage
+    }
+
+    /// Clears the script and delivery style for a fresh start. The voice, the latest audio and the
+    /// saved recordings stay as they are.
+    func newScript() {
+        // Nothing to clear: keep the earlier undo copy instead of replacing it with blanks.
+        guard !isGenerating, !(script.isEmpty && direction.isEmpty) else { return }
+        let message = "New script started."
+        newScriptUndo = (message: message, script: script, direction: direction)
+        script = ""
+        direction = ""
+        errorMessage = nil
+        statusMessage = message
+    }
+
+    /// Puts back the script and delivery style that New Script cleared.
+    func undoNewScript() {
+        guard let undo = newScriptUndo else { return }
+        newScriptUndo = nil
+        script = undo.script
+        direction = undo.direction
+        statusMessage = "Script restored."
     }
 
     // MARK: The voice model
@@ -372,18 +405,18 @@ final class AppModel {
             if loaded == quality { await engine.unload() }
             try? FileManager.default.trashItem(at: engine.folder(for: quality), resultingItemURL: nil)
             refreshModelState()
-            statusMessage = "Moved the \(quality.title.lowercased()) model to the Trash. Empty the Trash to free the space."
+            statusMessage = "Moved the \(quality.shortTitle) model to the Trash. Empty the Trash to free the disk space."
         }
     }
 
-    /// Releases the model's memory now. It loads again for the next recording.
+    /// Frees up the model's memory now. It loads again before the next generation.
     func freeMemory() {
         guard !isGenerating else { return }
         unloadTask?.cancel()
         Task {
             await engine.unload()
             refreshModelState()
-            statusMessage = "Memory released. The voice model loads again for your next recording."
+            statusMessage = "Memory freed up. The voice model loads again before your next generation."
         }
     }
 
@@ -413,7 +446,7 @@ final class AppModel {
         }
     }
 
-    // MARK: History
+    // MARK: Recordings
 
     func deleteRecording(_ item: HistoryItem) {
         let url = URL(fileURLWithPath: item.filePath)
@@ -430,7 +463,7 @@ final class AppModel {
         library.history.removeAll()
         lastRecording = nil
         save()
-        statusMessage = "History cleared. Your recordings are still in \(outputFolder.lastPathComponent)."
+        statusMessage = "Recordings list cleared. The audio files are still in \(outputFolder.lastPathComponent)."
     }
 
     func fileExists(_ item: HistoryItem) -> Bool {
@@ -445,7 +478,7 @@ final class AppModel {
         script = item.script
         direction = item.direction ?? ""
         if library.voice(item.voiceID) != nil { selectedVoiceID = item.voiceID }
-        section = .write
+        section = .generate
     }
 
     // MARK: Output folder
