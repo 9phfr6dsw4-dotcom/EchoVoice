@@ -1,0 +1,219 @@
+import Foundation
+import XCTest
+@testable import EchoVoiceCore
+
+final class ScriptSplitterTests: XCTestCase {
+    func testSentencesRespectAbbreviationsDecimalsAndChinese() {
+        let text = "Dr. Smith arrived at 3.5 p.m. today. He said \"Hello!\" Then left... J. K. Rowling wrote it. 你好。我很好！真的？"
+        XCTAssertEqual(ScriptSplitter.sentences(in: text), [
+            "Dr. Smith arrived at 3.5 p.m. today.",
+            "He said \"Hello!\"",
+            "Then left...",
+            "J. K. Rowling wrote it.",
+            "你好。", "我很好！", "真的？"
+        ])
+    }
+
+    func testParagraphsAreSeparatedByBlankLines() {
+        XCTAssertEqual(ScriptSplitter.paragraphs(in: "Line one\nline two.\n\n\n  Second para.\r\nStill second."),
+                       ["Line one line two.", "Second para. Still second."])
+        XCTAssertEqual(ScriptSplitter.paragraphs(in: " \n\n \t\n"), [])
+    }
+
+    func testPartsPackSentencesWithPauses() {
+        XCTAssertEqual(ScriptSplitter.split("First sentence. Second one!\n\nNew paragraph here."), [
+            ScriptPart(text: "First sentence. Second one!", pauseAfter: 0.6),
+            ScriptPart(text: "New paragraph here.", pauseAfter: 0)
+        ])
+        XCTAssertEqual(ScriptSplitter.split("Alpha beta gamma. Delta epsilon zeta. Eta theta iota.", maxCharacters: 40), [
+            ScriptPart(text: "Alpha beta gamma. Delta epsilon zeta.", pauseAfter: 0.25),
+            ScriptPart(text: "Eta theta iota.", pauseAfter: 0)
+        ])
+        XCTAssertEqual(ScriptSplitter.split("   \n\n  "), [])
+    }
+
+    func testLongSentencesBreakAtCommasThenWords() {
+        let words = Array(repeating: "word", count: 30).joined(separator: " ")
+        let parts = ScriptSplitter.split("One, two, three; " + words + ".", maxCharacters: 40)
+        XCTAssertEqual(parts.map(\.text), [
+            "One, two, three; word word word word",
+            "word word word word word word word word",
+            "word word word word word word word word",
+            "word word word word word word word word",
+            "word word."
+        ])
+        XCTAssertTrue(parts.allSatisfy { $0.text.count <= 40 })
+        // A single huge "word" (for example a long link) is cut into pieces that fit.
+        let link = String(repeating: "x", count: 95)
+        XCTAssertEqual(ScriptSplitter.split(link, maxCharacters: 40).map { $0.text.count }, [40, 40, 15])
+    }
+
+    func testEveryWordSurvivesSplitting() {
+        let script = """
+        Hey, this is a longer script. It has several sentences, some of them with commas, and a few questions? Yes!
+
+        A second paragraph follows. It ends here.
+        """
+        let parts = ScriptSplitter.split(script, maxCharacters: 50)
+        let rejoined = parts.map(\.text).joined(separator: " ").split(separator: " ")
+        let original = script.split(whereSeparator: { $0.isWhitespace })
+        XCTAssertEqual(rejoined, original)
+    }
+}
+
+final class AudioToolsTests: XCTestCase {
+    func testWAVHeaderAndSamples() {
+        let data = WAVFile.encode(samples: [0, 0.5, -1, 2, .nan], sampleRate: 24_000)
+        XCTAssertEqual(data.count, 44 + 10)
+        XCTAssertEqual(String(decoding: data[0..<4], as: UTF8.self), "RIFF")
+        XCTAssertEqual(String(decoding: data[8..<16], as: UTF8.self), "WAVEfmt ")
+        func uint32(_ offset: Int) -> UInt32 { data[offset..<offset + 4].enumerated().reduce(0) { $0 | UInt32($1.element) << (8 * $1.offset) } }
+        func int16(_ offset: Int) -> Int16 { Int16(bitPattern: UInt16(data[offset]) | UInt16(data[offset + 1]) << 8) }
+        XCTAssertEqual(uint32(4), 46)
+        XCTAssertEqual(uint32(24), 24_000)
+        XCTAssertEqual(uint32(28), 48_000)
+        XCTAssertEqual(uint32(40), 10)
+        XCTAssertEqual((44..<54).filter { $0 % 2 == 0 }.map(int16), [0, 16384, -32767, 32767, 0])
+    }
+
+    func testWriteLeavesNoPartialFile() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("EchoVoiceTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("take.wav")
+        try WAVFile.write(samples: [0.1, 0.2], sampleRate: 24_000, to: url)
+        XCTAssertEqual(try Data(contentsOf: url).count, 48)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), ["take.wav"])
+        XCTAssertThrowsError(try WAVFile.write(samples: [0], sampleRate: 24_000, to: url))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), ["take.wav"])
+    }
+
+    func testJoinAddsPausesBetweenPartsOnly() {
+        let joined = AudioTools.join([[1, 1], [2], [3]], pauses: [0.5, 0.25, 9], sampleRate: 4)
+        XCTAssertEqual(joined, [1, 1, 0, 0, 2, 0, 3])
+    }
+
+    func testTrimSilenceKeepsAMargin() {
+        let samples: [Float] = [0, 0, 0, 0, 0.5, 0.2, 0, 0, 0, 0]
+        XCTAssertEqual(AudioTools.trimSilence(samples, sampleRate: 10, keep: 0.1), [0, 0.5, 0.2, 0])
+        XCTAssertEqual(AudioTools.trimSilence([0, 0.001], sampleRate: 10), [])
+    }
+
+    func testQuietClipsAreRaisedLoudOnesKept() {
+        let raised = AudioTools.normalizedIfQuiet([0.1, -0.2])
+        XCTAssertEqual(raised[0], 0.45, accuracy: 0.0001)
+        XCTAssertEqual(raised[1], -0.9, accuracy: 0.0001)
+        XCTAssertEqual(AudioTools.normalizedIfQuiet([0.8, -0.5]), [0.8, -0.5])
+    }
+
+    func testReferenceCheck() throws {
+        let rate = 100
+        XCTAssertThrowsError(try ReferenceCheck.check([Float](repeating: 0.0005, count: 500), sampleRate: rate)) {
+            XCTAssertEqual($0 as? ReferenceCheck.Problem, .silent)
+        }
+        XCTAssertThrowsError(try ReferenceCheck.check([Float](repeating: 0.3, count: 250), sampleRate: rate)) {
+            XCTAssertEqual($0 as? ReferenceCheck.Problem, .tooShort(2.5))
+        }
+        XCTAssertThrowsError(try ReferenceCheck.check([Float](repeating: 0.3, count: 6_100), sampleRate: rate)) {
+            XCTAssertEqual($0 as? ReferenceCheck.Problem, .tooLong(61))
+        }
+        let good = try ReferenceCheck.check([Float](repeating: 0.3, count: 1_200), sampleRate: rate)
+        XCTAssertEqual(good, ReferenceCheck.Result(seconds: 12, notes: []))
+        var loud = [Float](repeating: 0.3, count: 3_000)
+        for index in 0..<10 { loud[index] = 1 }
+        let result = try ReferenceCheck.check(loud, sampleRate: rate)
+        XCTAssertEqual(result.seconds, 30)
+        XCTAssertEqual(result.notes.count, 2)
+    }
+}
+
+final class LibraryTests: XCTestCase {
+    func testVoiceNamesAreCleanAndUnique() throws {
+        let jordan = Voice(name: "Jordan", transcript: "Hi.", seconds: 10)
+        XCTAssertEqual(try VoiceRules.name("  Jordan   take 2 ", existing: [jordan]), "Jordan take 2")
+        XCTAssertThrowsError(try VoiceRules.name("JORDAN", existing: [jordan])) {
+            XCTAssertEqual($0 as? VoiceRules.Problem, .duplicateName("Jordan"))
+        }
+        XCTAssertEqual(try VoiceRules.name("jordan", existing: [jordan], excluding: jordan.id), "jordan")
+        XCTAssertThrowsError(try VoiceRules.name("   ", existing: []))
+        XCTAssertThrowsError(try VoiceRules.name(String(repeating: "a", count: 81), existing: []))
+        XCTAssertEqual(try VoiceRules.transcript(" Hello\n there. "), "Hello there.")
+        XCTAssertThrowsError(try VoiceRules.transcript("  "))
+    }
+
+    func testHistorySearchMatchesEveryWordNewestFirst() {
+        let voice = UUID()
+        func item(_ script: String, _ age: Double, name: String = "Jordan") -> HistoryItem {
+            HistoryItem(date: Date(timeIntervalSince1970: 1_000_000 - age), voiceID: voice, voiceName: name, script: script, direction: nil,
+                        filePath: "/tmp/\(script).wav", seconds: 3, seed: 1, quality: .standard, cutOffParts: [], generationSeconds: 5)
+        }
+        let state = LibraryState(history: [item("Weekly update for the team", 50), item("Birthday message", 10), item("Team birthday", 30, name: "Sam")])
+        XCTAssertEqual(state.searchHistory("").map(\.script), ["Birthday message", "Team birthday", "Weekly update for the team"])
+        XCTAssertEqual(state.searchHistory("team").map(\.script), ["Team birthday", "Weekly update for the team"])
+        XCTAssertEqual(state.searchHistory("BIRTHDAY sam").map(\.script), ["Team birthday"])
+    }
+
+    func testStoreRoundTripAndDamagedFileIsSetAside() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("EchoVoiceStore-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let store = LibraryStore(fileURL: folder.appendingPathComponent("library.json"))
+        XCTAssertEqual(store.load(), LibraryState())
+        let voice = Voice(name: "Jordan", transcript: "Hi there.", seconds: 12.5, created: Date(timeIntervalSince1970: 1_700_000_000))
+        let state = LibraryState(voices: [voice])
+        try store.save(state)
+        XCTAssertEqual(store.load(), state)
+        try Data("not json".utf8).write(to: store.fileURL)
+        XCTAssertEqual(store.load(), LibraryState())
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+        XCTAssertTrue(names.contains { $0.hasPrefix("library.damaged-") }, "\(names)")
+    }
+
+    func testFileNames() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let date = Date(timeIntervalSince1970: 1_791_900_322)
+        XCTAssertEqual(FileNaming.recordingName(voiceName: "Jordan / take: 2", date: date, calendar: calendar),
+                       "EchoVoice – Jordan take 2 – 2026-10-13 at 14.05.22.wav")
+        XCTAssertEqual(FileNaming.safe("..."), "Voice")
+        XCTAssertEqual(FileNaming.safe(String(repeating: "a", count: 50)).count, 40)
+        let folder = URL(fileURLWithPath: "/x")
+        let taken: Set<String> = ["/x/a.wav", "/x/a 2.wav"]
+        XCTAssertEqual(FileNaming.unique("a.wav", in: folder, exists: { taken.contains($0.path) }).path, "/x/a 3.wav")
+        XCTAssertEqual(FileNaming.unique("b.wav", in: folder, exists: { taken.contains($0.path) }).path, "/x/b.wav")
+    }
+
+    func testClockText() {
+        XCTAssertEqual(TimeText.clock(7.4), "0:07")
+        XCTAssertEqual(TimeText.clock(65), "1:05")
+        XCTAssertEqual(TimeText.clock(3_723), "1:02:03")
+        XCTAssertEqual(TimeText.clock(-3), "0:00")
+    }
+}
+
+final class GenerationPlanTests: XCTestCase {
+    func testPlanChecksTheScript() {
+        XCTAssertThrowsError(try GenerationPlan(script: " \n ", seed: 1)) {
+            XCTAssertEqual($0 as? GenerationPlan.Problem, .emptyScript)
+        }
+        XCTAssertThrowsError(try GenerationPlan(script: String(repeating: "a", count: 50_001), seed: 1))
+        XCTAssertEqual(try GenerationPlan(script: "Hi. There.", seed: 1).parts.count, 1)
+    }
+
+    func testPartSeedsAreStableAndDistinct() throws {
+        let plan = try GenerationPlan(script: "Hi.", seed: 42)
+        XCTAssertEqual(plan.seed(forPart: 0), 0xA759_EA27_D472_7622)
+        XCTAssertEqual(plan.seed(forPart: 1), 0xBDD7_3226_2FEB_6E95)
+        XCTAssertEqual(plan.seed(forPart: 2), 0x28EF_E333_B266_F103)
+        let wrapping = try GenerationPlan(script: "Hi.", seed: .max)
+        XCTAssertEqual(wrapping.seed(forPart: 1), 0xE4D9_7177_1B65_2C20)
+    }
+
+    func testCutOffAndRemainingTime() throws {
+        XCTAssertTrue(GenerationPlan.wasCutOff(steps: 750))
+        XCTAssertFalse(GenerationPlan.wasCutOff(steps: 749))
+        let plan = try GenerationPlan(script: "Alpha beta gamma. Delta epsilon zeta. Eta theta iota.", seed: 1, maxCharacters: 40)
+        XCTAssertNil(plan.remainingSeconds(finishedParts: 0, elapsed: 10))
+        XCTAssertEqual(plan.remainingSeconds(finishedParts: 1, elapsed: 37)!, 15, accuracy: 0.0001)
+        XCTAssertNil(plan.remainingSeconds(finishedParts: 2, elapsed: 50))
+    }
+}

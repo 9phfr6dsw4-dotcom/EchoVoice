@@ -1,0 +1,56 @@
+name: EchoVoice CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and package on macOS 26
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify runner, Xcode and SDK
+        run: |
+          test "$(uname -m)" = "arm64"
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          echo "macOS SDK: $sdk_version"
+          test "${sdk_version%%.*}" -ge 26
+      - name: Install the Metal toolchain (MLX's GPU code needs it)
+        run: xcodebuild -downloadComponent MetalToolchain
+      - name: Show build schemes
+        run: xcodebuild -list
+      - name: Run core tests
+        run: |
+          xcodebuild test \
+            -scheme EchoVoice-Package \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath .xcbuild \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            -only-testing:EchoVoiceTests \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet
+      - name: Build, package, and verify app bundle and ZIP
+        run: bash Scripts/package-app.sh
+      - name: Launch app smoke test
+        run: bash Scripts/smoke-test.sh
+      - name: Upload finished app ZIP
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EchoVoice-${{ github.run_number }}
+          path: |
+            dist/EchoVoice.zip
+            dist/EchoVoice.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
