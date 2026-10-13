@@ -1,64 +1,104 @@
 import EchoVoiceCore
 import SwiftUI
 
-/// Type a script, pick a voice, make a recording.
-struct WriteView: View {
+/// Generate: pick a voice, write or paste a script, optionally describe the delivery, and turn it
+/// into audio.
+struct GenerateView: View {
     @Environment(AppModel.self) private var model
+    @FocusState private var scriptFocused: Bool
 
     var body: some View {
-        @Bindable var model = model
-        Page(title: "Write", subtitle: "Type or paste anything, any length, and hear it in a voice you saved.") {
+        Page(title: "Generate", subtitle: "Turn your script into audio.", showsPrivacyFooter: false) {
             ModelBanner()
             if model.voices.isEmpty {
                 noVoices
             } else {
                 GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 12) {
-                            Picker("Voice", selection: $model.selectedVoiceID) {
-                                ForEach(model.voices) { voice in
-                                    Text(voice.name).tag(Optional(voice.id))
-                                }
-                            }
-                            .frame(maxWidth: 320)
-                            Spacer()
-                            Text(scriptSummary)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                        TextEditor(text: $model.script)
-                            .font(.system(size: 16))
-                            .scrollContentBackground(.hidden)
-                            .padding(8)
-                            .frame(minHeight: 260)
-                            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.25)))
-                            .overlay(alignment: .topLeading) {
-                                if model.script.isEmpty {
-                                    Text("What should it say? Paragraph breaks become slightly longer pauses.")
-                                        .foregroundStyle(.tertiary)
-                                        .font(.system(size: 16))
-                                        .padding(.horizontal, 13)
-                                        .padding(.vertical, 8)
-                                        .allowsHitTesting(false)
-                                }
-                            }
-                            .disabled(model.isGenerating)
-                        VStack(alignment: .leading, spacing: 4) {
-                            TextField("How should it sound? (optional)", text: $model.direction, prompt: Text("e.g. warm and slow, excited, calm and quiet"))
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(model.isGenerating)
-                            Caption("Optional. A short description of the delivery. Recordings with a direction take about twice as long to make.")
-                        }
+                    VStack(alignment: .leading, spacing: 18) {
+                        voiceRow
+                        scriptField
+                        deliveryField
                         actionRow
                     }
-                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 4)
                 }
             }
+            footerRow
             if let item = model.lastRecording {
                 LastRecordingCard(item: item)
             }
+        }
+    }
+
+    private var voiceRow: some View {
+        @Bindable var model = model
+        return HStack(spacing: 12) {
+            Text("Voice")
+                .foregroundStyle(.secondary)
+            Picker("Voice", selection: $model.selectedVoiceID) {
+                ForEach(model.voices) { voice in
+                    Text(voice.name).tag(Optional(voice.id))
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .disabled(model.isGenerating)
+            Spacer()
+        }
+    }
+
+    private var scriptField: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Script")
+                    .font(.headline)
+                Spacer()
+                Text(scriptSummary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            TextEditor(text: $model.script)
+                .font(.system(size: 16))
+                .focused($scriptFocused)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .frame(minHeight: 220)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.25)))
+                .overlay(alignment: .topLeading) {
+                    if model.script.isEmpty {
+                        Text("Type or paste your script…")
+                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 16))
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .disabled(model.isGenerating)
+            Caption("Paragraph breaks add a longer pause.")
+        }
+    }
+
+    private var deliveryField: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Delivery style")
+                    .font(.headline)
+                Text("Optional")
+                    .foregroundStyle(.secondary)
+            }
+            TextField("Delivery style", text: $model.direction, prompt: Text("e.g. calm, upbeat, conversational"))
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.large)
+                .disabled(model.isGenerating)
+            Caption("Adding a style takes about twice as long to generate.")
         }
     }
 
@@ -67,8 +107,8 @@ struct WriteView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Add a voice to get started", systemImage: "person.wave.2")
                     .font(.headline)
-                Caption("Record a short clip or import one (8 to 25 seconds of natural speech works best). EchoVoice can write down the words for you.")
-                Button("Add a Voice…", systemImage: "plus") { model.section = .voices }
+                Caption("Record a short clip or import one. EchoVoice writes down the words for you.")
+                Button("Add Voice…", systemImage: "plus") { model.section = .voices }
                     .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,12 +116,16 @@ struct WriteView: View {
         }
     }
 
+    /// "15 words", plus the number of parts when a long script is made in several.
     private var scriptSummary: String {
-        let characters = model.script.count
-        guard characters > 0 else { return "" }
+        let words = ScriptStats.wordLabel(model.script)
+        guard !words.isEmpty else { return "" }
         let parts = ScriptSplitter.split(model.script).count
-        let count = "\(characters.formatted()) characters"
-        return parts > 1 ? "\(count) · made in \(parts) parts" : count
+        return parts > 1 ? "\(words) · \(parts) parts" : words
+    }
+
+    private var canStartNewScript: Bool {
+        !model.isGenerating && !(model.script.isEmpty && model.direction.isEmpty)
     }
 
     @ViewBuilder
@@ -110,21 +154,40 @@ struct WriteView: View {
                 }
             }
         } else {
-            HStack {
+            HStack(spacing: 12) {
                 Button {
                     model.generate()
                 } label: {
-                    Label("Make Recording", systemImage: "waveform")
+                    Label("Generate Audio", systemImage: "waveform")
                         .padding(.horizontal, 6)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(model.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.selectedVoice == nil || model.isDownloading)
-                Caption(model.isDownloading ? "Available when the download finishes." : "⌘↩")
+                .help("Generate Audio (⌘↩)")
+                if model.isDownloading {
+                    Caption("Available when the download finishes.")
+                }
                 Spacer()
-                Caption("Saved automatically in \(model.outputFolder.lastPathComponent).")
+                Button("New Script") {
+                    model.newScript()
+                    scriptFocused = true
+                }
+                .controlSize(.large)
+                .disabled(!canStartNewScript)
+                .help("Clear the script and delivery style. Your voice, audio and recordings stay as they are.")
             }
+        }
+    }
+
+    private var footerRow: some View {
+        HStack {
+            PrivacyFooter()
+            Spacer()
+            Text("Audio saves to Recordings.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -144,7 +207,7 @@ struct ModelBanner: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("One-time download")
                             .font(.headline)
-                        Caption("EchoVoice runs the Breeze TTS 2 voice model on this Mac. It's downloaded once (\(model.quality.title.lowercased()), a few GB); after that, EchoVoice works offline. It also starts automatically with your first recording.")
+                        Caption("EchoVoice runs the Breeze TTS 2 voice model on this Mac. It's downloaded once (\(model.quality.shortTitle), a few GB); after that, EchoVoice works offline. It also starts automatically when you first generate audio.")
                     }
                     Spacer()
                     Button("Download Now") { model.downloadModel() }
@@ -220,7 +283,7 @@ struct LastRecordingCard: View {
                     ProgressView(value: model.playback.progress)
                 }
                 if !item.cutOffParts.isEmpty {
-                    WarningLabel(message: "Part \(item.cutOffParts.map(String.init).joined(separator: ", ")) reached the model's length limit and may be cut off. Try a New Take from History, or add a sentence break there.")
+                    WarningLabel(message: "Part \(item.cutOffParts.map(String.init).joined(separator: ", ")) reached the model's length limit and may be cut off. Try a New Take from Recordings, or add a sentence break there.")
                 }
                 if !model.fileExists(item) {
                     WarningLabel(message: "This file was moved or deleted.")

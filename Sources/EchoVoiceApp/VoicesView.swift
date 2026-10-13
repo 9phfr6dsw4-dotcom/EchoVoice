@@ -10,7 +10,7 @@ struct VoicesView: View {
     @State private var deleting: Voice?
 
     var body: some View {
-        Page(title: "Voices", subtitle: "A voice is a short clip of someone speaking and the exact words they say in it.") {
+        Page(title: "Voices", subtitle: "Your saved voices, ready to use.") {
             HStack {
                 Button("Add Voice…", systemImage: "plus") { showingAdd = true }
                     .buttonStyle(.borderedProminent)
@@ -27,17 +27,6 @@ struct VoicesView: View {
                         VoiceRow(voice: voice, edit: { editing = voice }, delete: { deleting = voice })
                     }
                 }
-            }
-            GroupBox("Tips for a good clip") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("One person, speaking naturally, in a quiet room with no music.", systemImage: "person")
-                    Label("8 to 25 seconds is ideal. Anything from 3 to 60 seconds works.", systemImage: "timer")
-                    Label("The words must match the clip exactly. EchoVoice writes them down; check them before saving.", systemImage: "text.quote")
-                    Label("Breeze TTS 2 speaks English and Chinese.", systemImage: "globe")
-                }
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
             }
         }
         .sheet(isPresented: $showingAdd) {
@@ -102,9 +91,11 @@ struct VoiceRow: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 6) {
-                Button("Use") {
-                    model.selectedVoiceID = voice.id
-                    model.section = .write
+                if model.selectedVoiceID != voice.id {
+                    Button("Use voice") {
+                        model.selectedVoiceID = voice.id
+                        model.section = .generate
+                    }
                 }
                 HStack(spacing: 6) {
                     Button("Edit…", action: edit)
@@ -142,6 +133,7 @@ struct AddVoiceSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add a Voice")
                 .font(.title2.weight(.semibold))
+            ClipTips()
             clipSection
             if let check {
                 VStack(alignment: .leading, spacing: 6) {
@@ -394,5 +386,24 @@ struct EditVoiceSheet: View {
         }
         .padding(22)
         .frame(width: 520)
+    }
+}
+
+/// Advice for recording or choosing a clip, shown while adding a voice.
+struct ClipTips: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Tips for a good clip")
+                .font(.headline)
+            Label("One person speaking naturally, in a quiet room with no music.", systemImage: "person")
+            Label("8 to 25 seconds is ideal; anything from 3 to 60 seconds works.", systemImage: "timer")
+            Label("The words below must match the clip exactly. EchoVoice writes them down; check them before saving.", systemImage: "text.quote")
+            Label("Breeze TTS 2 speaks English and Chinese.", systemImage: "globe")
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
     }
 }

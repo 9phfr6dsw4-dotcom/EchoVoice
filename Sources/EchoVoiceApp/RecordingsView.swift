@@ -1,8 +1,8 @@
 import EchoVoiceCore
 import SwiftUI
 
-/// Every recording, newest first: play it, find it, make it again, or reuse its script.
-struct HistoryView: View {
+/// Every recording, newest first: play it, find it, generate it again, or reuse its script.
+struct RecordingsView: View {
     @Environment(AppModel.self) private var model
     @State private var query = ""
     @State private var deleting: HistoryItem?
@@ -10,27 +10,33 @@ struct HistoryView: View {
 
     var body: some View {
         let items = model.library.searchHistory(query)
-        Page(title: "History", subtitle: "Everything you've made. Recordings are saved as WAV files in \(model.outputFolder.lastPathComponent).") {
+        Page(title: "Recordings", subtitle: "Your generated audio, saved automatically.") {
             HStack(spacing: 12) {
-                TextField("Search scripts and voices", text: $query)
+                TextField("Search recordings", text: $query)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 360)
                 Spacer()
                 Button("Open Folder", systemImage: "folder") { model.showOutputFolder() }
-                Button("Clear History…") { confirmClear = true }
+                Button("Clear List…") { confirmClear = true }
                     .disabled(model.library.history.isEmpty)
             }
             if model.library.history.isEmpty {
-                ContentUnavailableView("No recordings yet", systemImage: "waveform",
-                                       description: Text("Recordings you make on the Write page show up here."))
-                    .frame(maxWidth: .infinity, minHeight: 220)
+                ContentUnavailableView {
+                    Label("No recordings yet", systemImage: "waveform")
+                } description: {
+                    Text("Generate your first audio to get started.")
+                } actions: {
+                    Button("Go to Generate") { model.section = .generate }
+                        .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, minHeight: 240)
             } else if items.isEmpty {
                 ContentUnavailableView.search(text: query)
                     .frame(maxWidth: .infinity, minHeight: 200)
             } else {
                 LazyVStack(spacing: 10) {
                     ForEach(items) { item in
-                        HistoryRow(item: item, delete: { deleting = item })
+                        RecordingRow(item: item, delete: { deleting = item })
                     }
                 }
             }
@@ -45,16 +51,16 @@ struct HistoryView: View {
             }
             Button("Cancel", role: .cancel) { deleting = nil }
         }
-        .confirmationDialog("Clear the History list?", isPresented: $confirmClear, titleVisibility: .visible) {
-            Button("Clear History", role: .destructive) { model.clearHistory() }
+        .confirmationDialog("Clear the Recordings list?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("Clear List", role: .destructive) { model.clearHistory() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Only the list is cleared. The recordings stay in your folder.")
+            Text("Only the list is cleared. The audio files stay in \(model.outputFolder.lastPathComponent).")
         }
     }
 }
 
-struct HistoryRow: View {
+struct RecordingRow: View {
     @Environment(AppModel.self) private var model
     let item: HistoryItem
     let delete: () -> Void
@@ -103,11 +109,11 @@ struct HistoryRow: View {
             }
             HStack(spacing: 8) {
                 Button("Same Take") { model.regenerate(item, sameTake: true) }
-                    .help("Make it again with the same settings and seed (\(item.seed)). Usually very close to the original.")
+                    .help("Generate it again with the same settings and seed (\(item.seed)). Usually very close to the original.")
                 Button("New Take") { model.regenerate(item, sameTake: false) }
-                    .help("Make it again with a fresh seed for a different reading.")
+                    .help("Generate it again with a fresh seed for a different reading.")
                 Button("Use Script") { model.useScript(item) }
-                    .help("Put this script on the Write page to edit it.")
+                    .help("Put this script on the Generate page to edit it.")
                 Spacer()
                 if exists {
                     Button("Show in Finder", systemImage: "folder") { model.reveal(item) }

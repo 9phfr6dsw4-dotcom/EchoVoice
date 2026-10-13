@@ -25,9 +25,9 @@ struct EchoVoiceApp: App {
                 Button("Settings…") { model.section = .settings }
                     .keyboardShortcut(",", modifiers: .command)
             }
-            CommandMenu("Recording") {
-                Button("Make Recording") {
-                    model.section = .write
+            CommandMenu("Audio") {
+                Button("Generate Audio") {
+                    model.section = .generate
                     model.generate()
                 }
                 .keyboardShortcut(.return, modifiers: .command)
@@ -35,6 +35,12 @@ struct EchoVoiceApp: App {
                 Button("Stop") { model.stop() }
                     .keyboardShortcut(".", modifiers: .command)
                     .disabled(!model.isGenerating)
+                Divider()
+                Button("New Script") {
+                    model.section = .generate
+                    model.newScript()
+                }
+                .disabled(model.isGenerating || (model.script.isEmpty && model.direction.isEmpty))
             }
             CommandMenu("Go") {
                 ForEach(AppSection.allCases) { section in
@@ -65,10 +71,16 @@ struct RootView: View {
                 .overlay(alignment: .top) {
                     VStack(spacing: 8) {
                         if let message = model.errorMessage {
-                            MessageBar(text: message, isError: true) { model.errorMessage = nil }
+                            MessageBar(text: message, isError: true, dismiss: { model.errorMessage = nil })
                         }
                         if let message = model.statusMessage {
-                            MessageBar(text: message, isError: false) { model.statusMessage = nil }
+                            MessageBar(
+                                text: message,
+                                isError: false,
+                                actionTitle: model.canUndoNewScript ? "Undo" : nil,
+                                action: { model.undoNewScript() },
+                                dismiss: { model.statusMessage = nil }
+                            )
                         }
                     }
                     .padding(12)
@@ -78,7 +90,8 @@ struct RootView: View {
         .navigationTitle(model.section.title)
         .task(id: model.statusMessage) {
             guard model.statusMessage != nil else { return }
-            try? await Task.sleep(for: .seconds(5))
+            // Messages with an Undo button stay up longer.
+            try? await Task.sleep(for: .seconds(model.canUndoNewScript ? 10 : 5))
             model.statusMessage = nil
         }
     }
@@ -92,9 +105,9 @@ struct RootView: View {
     @ViewBuilder
     private var detail: some View {
         switch model.section {
-        case .write: WriteView()
+        case .generate: GenerateView()
         case .voices: VoicesView()
-        case .history: HistoryView()
+        case .recordings: RecordingsView()
         case .settings: SettingsView()
         }
     }

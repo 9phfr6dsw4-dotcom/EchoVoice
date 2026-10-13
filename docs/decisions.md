@@ -4,7 +4,7 @@
 
 - A native SwiftUI app for macOS 26 on Apple Silicon. No Terminal, no local web server, no Python.
 - Speech is made by Breeze TTS 2 through mlx-audio-swift on MLX. Its MLX checkpoints (8-bit by default; full precision and 4-bit as options) are downloaded once from Hugging Face into `~/Library/Application Support/EchoVoice/Models`, without a second copy in a shared cache. After that EchoVoice works offline.
-- Voices, scripts, history and recordings never leave the Mac. No accounts, analytics or uploads.
+- Voices, scripts, the Recordings list and audio files never leave the Mac. No accounts, analytics or uploads.
 - The model is loaded on demand and released after a configurable idle time (default 10 minutes), so it doesn't hold memory between uses.
 
 ## Voices
@@ -13,11 +13,24 @@
 - Transcripts are written by Apple's on-device speech recognition (SpeechTranscriber) and always shown for checking before saving.
 - Deleting a voice moves its clip to the Trash. Recordings made with it are kept.
 
-## Recordings
+## Generating audio
 
 - Scripts of any length (up to 50,000 characters) are split at sentence boundaries into parts of about 400 characters, far below the model's 750-step limit per pass (about a minute of speech). Long sentences break at commas, then spaces. A part that still reaches the limit is reported as possibly cut off.
 - Each part's seed is derived from the recording's seed, so Same Take repeats a recording and New Take varies it.
+- The script stays in place after generating, so it can be tweaked and generated again. **New Script** clears the script and delivery style (keeping the voice, the last audio and the Recordings list) and offers Undo, which restores both fields.
 - Parts are joined with 0.25 s pauses between sentences and 0.6 s between paragraphs, and saved as 16-bit WAV through a temporary file, so a half-written file is never left behind.
+
+## Wording
+
+- The pages are Generate, Voices, Recordings and Settings. Buttons say exactly what they do: Generate Audio, New Script, Use voice.
+- Privacy is stated once in full in Settings; other pages show a short “Processed on your Mac” note.
+- Qualities are named for what you get: Balanced (recommended, 8-bit), Best quality (full precision) and Fastest (4-bit). The saved setting keeps its old internal values, so existing settings carry over.
+
+## App icon
+
+- The icon is an Icon Composer file (`Resources/AppIcon.icon`: a gradient background and two glass layers). The packaging script compiles it with `actool` into `Assets.car` and sets `CFBundleIconName`. On newer macOS versions an app with only a classic `.icns` can be shown shrunk onto a grey plate in the Dock.
+- The classic `AppIcon.icns`, made from `Resources/AppIcon-1024.png`, is still bundled with `CFBundleIconFile` as a fallback.
+- `actool` can exit successfully without compiling the icon, so the script checks that `Assets.car` exists and names `AppIcon`, in the app and in the ZIP.
 
 ## Build and distribution
 
