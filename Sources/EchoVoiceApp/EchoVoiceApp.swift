@@ -5,12 +5,16 @@ import SwiftUI
 @main
 @MainActor
 struct EchoVoiceApp: App {
-    @State private var model = AppModel()
+    @State private var model: AppModel
 
     init() {
+        if CommandLine.arguments.contains("--ci-design-review") {
+            CIReviewCapture.runAndExit()
+        }
         if CommandLine.arguments.contains("--mlx-self-test") {
             MLXSelfTest.runAndExit()
         }
+        _model = State(initialValue: AppModel())
     }
 
     var body: some Scene {
@@ -19,7 +23,7 @@ struct EchoVoiceApp: App {
                 .environment(model)
                 .frame(minWidth: 900, minHeight: 620)
         }
-        .defaultSize(width: 1080, height: 760)
+        .defaultSize(width: 1180, height: 840)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { model.section = .settings }
@@ -56,16 +60,12 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: sectionSelection) {
-                ForEach(AppSection.allCases) { section in
-                    Label(section.title, systemImage: section.symbol)
-                        .tag(section)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
-        } detail: {
-            // Messages float over the page, so showing one never shifts the layout.
+        VStack(spacing: 0) {
+            navigationBar
+            Rectangle()
+                .fill(Theme.rule)
+                .frame(height: 1)
+            // Messages float over the page, so Undo and errors never shift the editor.
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(alignment: .top) {
@@ -87,7 +87,13 @@ struct RootView: View {
                     .frame(maxWidth: 720)
                 }
         }
-        .navigationTitle(model.section.title)
+        .background(Theme.canvas)
+        .foregroundStyle(Theme.ink)
+        .tint(Theme.accent)
+        .buttonStyle(PearlSecondaryButtonStyle())
+        .groupBoxStyle(PearlGroupBoxStyle())
+        .preferredColorScheme(.light)
+        .navigationTitle("EchoVoice")
         .task(id: model.statusMessage) {
             guard model.statusMessage != nil else { return }
             // Messages with an Undo button stay up longer.
@@ -96,10 +102,48 @@ struct RootView: View {
         }
     }
 
-    private var sectionSelection: Binding<AppSection?> {
-        Binding(get: { model.section }, set: { value in
-            if let value { model.section = value }
-        })
+    private var navigationBar: some View {
+        HStack(spacing: 30) {
+            HStack(spacing: 10) {
+                Text("E")
+                    .font(Theme.editorial(32).italic())
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 42, height: 42)
+                    .background(Theme.paper, in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityHidden(true)
+                Text("EchoVoice")
+                    .font(Theme.editorial(25))
+            }
+            HStack(spacing: 4) {
+                ForEach(AppSection.allCases) { section in
+                    Button {
+                        model.section = section
+                    } label: {
+                        Label(section.title, systemImage: section.symbol)
+                            .font(.system(size: 12, weight: model.section == section ? .semibold : .regular))
+                            .foregroundStyle(model.section == section ? Theme.accent : Theme.muted)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 25)
+                            .overlay(alignment: .bottom) {
+                                if model.section == section {
+                                    Rectangle().fill(Theme.accent).frame(height: 2)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(model.section == section ? .isSelected : [])
+                    .help("\(section.title) (⌘\(String(section.shortcut)))")
+                }
+            }
+            Spacer(minLength: 0)
+            Label("On your Mac", systemImage: "lock.shield")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.muted)
+        }
+        .padding(.horizontal, 30)
+        .frame(maxWidth: 1180)
+        .frame(maxWidth: .infinity)
+        .background(Theme.canvas)
     }
 
     @ViewBuilder
@@ -112,3 +156,4 @@ struct RootView: View {
         }
     }
 }
+

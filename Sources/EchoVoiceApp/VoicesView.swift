@@ -10,10 +10,10 @@ struct VoicesView: View {
     @State private var deleting: Voice?
 
     var body: some View {
-        Page(title: "Voices", subtitle: "Your saved voices, ready to use.") {
+        Page(title: "The voice collection", subtitle: "Distinctly yours. Familiar voices, ready for their next story.") {
             HStack {
                 Button("Add Voice…", systemImage: "plus") { showingAdd = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PearlPrimaryButtonStyle())
                 Spacer()
                 Caption("\(model.voices.count) voice\(model.voices.count == 1 ? "" : "s")")
             }
@@ -22,7 +22,7 @@ struct VoicesView: View {
                                        description: Text("Add a voice by recording a short clip or importing one."))
                     .frame(maxWidth: .infinity, minHeight: 220)
             } else {
-                VStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 20)], alignment: .leading, spacing: 20) {
                     ForEach(model.voices) { voice in
                         VoiceRow(voice: voice, edit: { editing = voice }, delete: { deleting = voice })
                     }
@@ -60,55 +60,53 @@ struct VoiceRow: View {
 
     var body: some View {
         let clip = model.clipURL(for: voice)
-        HStack(alignment: .top, spacing: 12) {
-            Button {
-                model.playback.toggle(clip)
-            } label: {
-                Image(systemName: model.playback.isPlaying(clip) ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Theme.accent)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Play the clip of \(voice.name)")
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(voice.name)
-                        .font(.headline)
-                    if model.selectedVoiceID == voice.id {
-                        Text("Selected")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Theme.accent.opacity(0.15), in: Capsule())
-                            .foregroundStyle(Theme.accent)
-                    }
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                VoiceInitial(name: voice.name)
+                Spacer()
+                if model.selectedVoiceID == voice.id {
+                    Label("Selected", systemImage: "checkmark")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.accent)
                 }
+                Button {
+                    model.playback.toggle(clip)
+                } label: {
+                    Image(systemName: model.playback.isPlaying(clip) ? "pause.circle" : "play.circle")
+                        .font(.system(size: 32, weight: .ultraLight))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(model.playback.isPlaying(clip) ? "Pause" : "Play") the clip of \(voice.name)")
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text(voice.name)
+                    .font(Theme.editorial(27))
+                    .lineLimit(2)
                 Text("“\(voice.transcript)”")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.editorial(17))
+                    .foregroundStyle(Theme.muted)
+                    .lineSpacing(4)
                     .lineLimit(3)
+                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
                 Caption("\(TimeText.clock(voice.seconds)) clip · added \(DateText.medium(voice.created))")
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 6) {
-                if model.selectedVoiceID != voice.id {
-                    Button("Use voice") {
-                        model.selectedVoiceID = voice.id
-                        model.section = .generate
-                    }
+            Rectangle().fill(Theme.rule.opacity(0.65)).frame(height: 1)
+            HStack(spacing: 8) {
+                Button("Use Voice") {
+                    model.selectedVoiceID = voice.id
+                    model.section = .generate
                 }
-                HStack(spacing: 6) {
-                    Button("Edit…", action: edit)
-                    Button(role: .destructive, action: delete) {
-                        Image(systemName: "trash")
-                    }
-                    .accessibilityLabel("Delete \(voice.name)")
+                .buttonStyle(PearlPrimaryButtonStyle())
+                Spacer(minLength: 0)
+                Button("Edit…", action: edit)
+                Button(role: .destructive, action: delete) {
+                    Image(systemName: "trash")
                 }
+                .accessibilityLabel("Delete \(voice.name)")
             }
-            .controlSize(.small)
         }
-        .padding(12)
-        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        .modifier(PearlPanel())
     }
 }
 
@@ -132,7 +130,7 @@ struct AddVoiceSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add a Voice")
-                .font(.title2.weight(.semibold))
+                .font(Theme.editorial(30))
             ClipTips()
             clipSection
             if let check {
@@ -163,11 +161,11 @@ struct AddVoiceSheet: View {
                     .frame(minHeight: 90)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.25)))
+                    .background(Theme.paper, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.rule))
                 Caption("Breeze copies a voice best when these words match the clip exactly. Listen once and fix anything that's off.")
             }
-            TextField("Name", text: $name, prompt: Text("e.g. Jordan, or Jordan – calm"))
+            TextField("Name", text: $name, prompt: Text("e.g. Ada, or Ada – calm"))
                 .textFieldStyle(.roundedBorder)
             HStack {
                 Spacer()
@@ -179,13 +177,14 @@ struct AddVoiceSheet: View {
                 }
                 .keyboardShortcut(.cancelAction)
                 Button("Save Voice") { save() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PearlPrimaryButtonStyle())
                     .keyboardShortcut(.defaultAction)
                     .disabled(samples.isEmpty || check == nil || isPreparing || recorder.isRecording)
             }
         }
-        .padding(22)
-        .frame(width: 560)
+        .padding(28)
+        .frame(width: 600)
+        .background(Theme.canvas)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio]) { result in
             if case .success(let url) = result { use(url, fromRecording: false) }
         }
@@ -224,7 +223,7 @@ struct AddVoiceSheet: View {
                             .frame(maxWidth: 160)
                         Spacer()
                         Button("Stop", systemImage: "stop.fill") { finishRecording() }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(PearlPrimaryButtonStyle())
                     }
                     Caption("Speak naturally, the way you normally talk. Recording stops by itself after 60 seconds.")
                 } else if isPreparing {
@@ -235,7 +234,7 @@ struct AddVoiceSheet: View {
                 } else {
                     HStack(spacing: 10) {
                         Button(samples.isEmpty ? "Record" : "Record Again", systemImage: "mic.fill") { startRecording() }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(PearlPrimaryButtonStyle())
                         Button("Import a File…", systemImage: "square.and.arrow.down") { importing = true }
                         Spacer()
                         if let previewURL {
@@ -353,7 +352,7 @@ struct EditVoiceSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Edit “\(voice.name)”")
-                .font(.title2.weight(.semibold))
+                .font(Theme.editorial(30))
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
             Text("Exact words in the clip")
@@ -362,8 +361,8 @@ struct EditVoiceSheet: View {
                 .frame(minHeight: 110)
                 .scrollContentBackground(.hidden)
                 .padding(6)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.25)))
+                .background(Theme.paper, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.rule))
             if let problem {
                 ErrorLabel(message: problem)
             }
@@ -380,12 +379,13 @@ struct EditVoiceSheet: View {
                         problem = error.localizedDescription
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PearlPrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(22)
-        .frame(width: 520)
+        .padding(28)
+        .frame(width: 560)
+        .background(Theme.canvas)
     }
 }
 
@@ -404,6 +404,7 @@ struct ClipTips: View {
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.soft, in: RoundedRectangle(cornerRadius: 10))
     }
 }
+

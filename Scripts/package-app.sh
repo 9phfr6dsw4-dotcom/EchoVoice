@@ -11,8 +11,8 @@ VERIFY_DIR="dist/verify-extracted"
 ZIP="dist/EchoVoice.zip"
 DERIVED=".xcbuild"
 PRODUCTS="$DERIVED/Build/Products/Release"
-VERSION="0.2.0"
-BUILD="2"
+VERSION="0.3.0"
+BUILD="3"
 
 fail() {
     echo "error: $*" >&2
@@ -118,3 +118,4 @@ file "$EXTRACTED/Contents/MacOS/EchoVoice"
 bash Scripts/write-checksum-sidecar.sh "$ZIP"
 ( cd dist && shasum -a 256 -c EchoVoice.zip.sha256 )
 printf 'Verified package: %s\n' "$ZIP"
+

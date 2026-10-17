@@ -8,21 +8,24 @@ struct GenerateView: View {
     @FocusState private var scriptFocused: Bool
 
     var body: some View {
-        Page(title: "Generate", subtitle: "Turn your script into audio.", showsPrivacyFooter: false) {
+        Page(title: "Every word, considered.", subtitle: "Your private voice studio. Turn a script into something worth hearing.", showsPrivacyFooter: false) {
             ModelBanner()
             if model.voices.isEmpty {
                 noVoices
             } else {
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 30) {
+                    VStack(alignment: .leading, spacing: 26) {
                         voiceRow
-                        scriptField
+                        Rectangle().fill(Theme.rule).frame(height: 1)
                         deliveryField
+                    }
+                    .frame(width: 194, alignment: .topLeading)
+                    .padding(.top, 6)
+                    VStack(alignment: .leading, spacing: 20) {
+                        scriptField
                         actionRow
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 4)
                 }
             }
             footerRow
@@ -34,54 +37,73 @@ struct GenerateView: View {
 
     private var voiceRow: some View {
         @Bindable var model = model
-        return HStack(spacing: 12) {
-            Text("Voice")
-                .foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("THE VOICE")
+                .font(.system(size: 11, weight: .medium))
+                .tracking(1.6)
+                .foregroundStyle(Theme.muted)
+            if let voice = model.selectedVoice {
+                VoiceInitial(name: voice.name, size: 52)
+                Text(voice.name)
+                    .font(Theme.editorial(24))
+                    .fixedSize(horizontal: false, vertical: true)
+                Caption("Your saved voice, ready to speak.")
+            }
             Picker("Voice", selection: $model.selectedVoiceID) {
+                Text("Choose a voice").tag(Optional<UUID>.none)
                 ForEach(model.voices) { voice in
                     Text(voice.name).tag(Optional(voice.id))
                 }
             }
             .labelsHidden()
-            .fixedSize()
+            .frame(maxWidth: .infinity)
             .disabled(model.isGenerating)
-            Spacer()
         }
     }
 
     private var scriptField: some View {
         @Bindable var model = model
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Script")
-                    .font(.headline)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("SCRIPT")
+                    .tracking(1.5)
                 Spacer()
                 Text(scriptSummary)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+            .font(.system(size: 11))
+            .foregroundStyle(Theme.muted)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 17)
+            Rectangle().fill(Theme.rule.opacity(0.6)).frame(height: 1)
             TextEditor(text: $model.script)
-                .font(.system(size: 16))
+                .font(Theme.editorial(23))
+                .lineSpacing(7)
+                .foregroundStyle(Theme.ink)
                 .focused($scriptFocused)
                 .scrollContentBackground(.hidden)
-                .padding(8)
-                .frame(minHeight: 220)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.25)))
+                .padding(20)
+                .frame(minHeight: 290)
                 .overlay(alignment: .topLeading) {
                     if model.script.isEmpty {
-                        Text("Type or paste your script…")
-                            .foregroundStyle(.tertiary)
-                            .font(.system(size: 16))
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 8)
+                        Text("Begin your next story…")
+                            .foregroundStyle(Theme.muted)
+                            .font(Theme.editorial(23))
+                            .padding(.horizontal, 25)
+                            .padding(.vertical, 20)
                             .allowsHitTesting(false)
                     }
                 }
+                .accessibilityLabel("Script")
                 .disabled(model.isGenerating)
+            Rectangle().fill(Theme.rule.opacity(0.6)).frame(height: 1)
             Caption("Paragraph breaks add a longer pause.")
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
         }
+        .background(Theme.paper, in: RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.rule.opacity(0.6)))
+        .shadow(color: Theme.ink.opacity(0.035), radius: 16, y: 5)
     }
 
     private var deliveryField: some View {
@@ -89,11 +111,12 @@ struct GenerateView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Delivery style")
-                    .font(.headline)
+                    .font(.system(size: 12, weight: .medium))
                 Text("Optional")
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.muted)
             }
-            TextField("Delivery style", text: $model.direction, prompt: Text("e.g. calm, upbeat, conversational"))
+            TextField("Delivery style", text: $model.direction, prompt: Text("e.g. calm, upbeat"))
                 .labelsHidden()
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.large)
@@ -109,7 +132,7 @@ struct GenerateView: View {
                     .font(.headline)
                 Caption("Record a short clip or import one. EchoVoice writes down the words for you.")
                 Button("Add Voice…", systemImage: "plus") { model.section = .voices }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PearlPrimaryButtonStyle())
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
@@ -132,18 +155,20 @@ struct GenerateView: View {
     private var actionRow: some View {
         if let progress = model.progress {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
                     if progress.parts > 1, progress.part > 0 {
                         ProgressView(value: Double(progress.part - 1), total: Double(progress.parts))
-                            .frame(maxWidth: 260)
+                            .frame(maxWidth: 100)
                     } else {
                         ProgressView().controlSize(.small)
                     }
-                    Text(progress.stage)
-                    if let left = progress.secondsLeft {
-                        Text("About \(TimeText.clock(left)) left")
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(progress.stage)
+                        if let left = progress.secondsLeft {
+                            Text("About \(TimeText.clock(left)) left")
+                                .foregroundStyle(Theme.muted)
+                                .monospacedDigit()
+                        }
                     }
                     Spacer()
                     Button("Stop", systemImage: "stop.fill") { model.stop() }
@@ -155,13 +180,20 @@ struct GenerateView: View {
             }
         } else {
             HStack(spacing: 12) {
+                Button("New Script", systemImage: "plus") {
+                    model.newScript()
+                    scriptFocused = true
+                }
+                .disabled(!canStartNewScript)
+                .help("Clear the script and delivery style. Your voice, audio and recordings stay as they are.")
+                Spacer()
                 Button {
                     model.generate()
                 } label: {
                     Label("Generate Audio", systemImage: "waveform")
                         .padding(.horizontal, 6)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PearlPrimaryButtonStyle())
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(model.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.selectedVoice == nil || model.isDownloading)
@@ -169,14 +201,6 @@ struct GenerateView: View {
                 if model.isDownloading {
                     Caption("Available when the download finishes.")
                 }
-                Spacer()
-                Button("New Script") {
-                    model.newScript()
-                    scriptFocused = true
-                }
-                .controlSize(.large)
-                .disabled(!canStartNewScript)
-                .help("Clear the script and delivery style. Your voice, audio and recordings stay as they are.")
             }
         }
     }
@@ -185,9 +209,9 @@ struct GenerateView: View {
         HStack {
             PrivacyFooter()
             Spacer()
-            Text("Audio saves to Recordings.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Text("Saved automatically to Recordings")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.muted)
         }
     }
 }
@@ -211,7 +235,7 @@ struct ModelBanner: View {
                     }
                     Spacer()
                     Button("Download Now") { model.downloadModel() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PearlPrimaryButtonStyle())
                 }
                 .padding(.vertical, 4)
             }
@@ -297,3 +321,4 @@ struct LastRecordingCard: View {
         }
     }
 }
+

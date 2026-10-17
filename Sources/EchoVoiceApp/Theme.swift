@@ -1,11 +1,21 @@
 import AppKit
 import SwiftUI
 
-/// The same look as EchoFlow, EchoLedger, Lumen and Quick Drop Zone.
+/// Pearl Editorial: warm paper, deep teal, and a comfortable reading measure.
 enum Theme {
-    static let accent = Color(red: 0.17, green: 0.49, blue: 0.94)
-    static let accentLight = Color(red: 0.55, green: 0.88, blue: 1.0)
-    static let success = Color(red: 0.16, green: 0.62, blue: 0.40)
+    static let canvas = Color(red: 0.949, green: 0.937, blue: 0.906)
+    static let paper = Color(red: 0.992, green: 0.988, blue: 0.969)
+    static let soft = Color(red: 0.910, green: 0.906, blue: 0.867)
+    static let ink = Color(red: 0.14, green: 0.18, blue: 0.19)
+    static let muted = Color(red: 0.36, green: 0.40, blue: 0.39)
+    static let rule = Color(red: 0.81, green: 0.81, blue: 0.76)
+    static let accent = Color(red: 0.20, green: 0.35, blue: 0.35)
+    static let accentLight = Color(red: 0.82, green: 0.88, blue: 0.85)
+    static let success = Color(red: 0.20, green: 0.40, blue: 0.31)
+
+    static func editorial(_ size: CGFloat) -> Font {
+        .custom("Baskerville", size: size)
+    }
 }
 
 struct PageHeader: View {
@@ -13,19 +23,19 @@ struct PageHeader: View {
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.largeTitle.weight(.semibold))
+                .font(Theme.editorial(38))
+                .foregroundStyle(Theme.ink)
+                .accessibilityAddTraits(.isHeader)
             Text(subtitle)
-                .font(.title3)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
 
-/// A scrolling page: large title, subtitle, content, and a short privacy note (pages that show
-/// their own footer turn it off).
 struct Page<Content: View>: View {
     let title: String
     let subtitle: String
@@ -34,25 +44,95 @@ struct Page<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 28) {
                 PageHeader(title: title, subtitle: subtitle)
                 content()
                 if showsPrivacyFooter {
                     PrivacyFooter()
+                        .padding(.top, 4)
                 }
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 34)
+            .frame(maxWidth: 1080, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Theme.canvas)
+    }
+}
+
+struct PearlPanel: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(22)
+            .background(Theme.paper, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.rule.opacity(0.65)))
+    }
+}
+
+struct PearlGroupBoxStyle: GroupBoxStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            configuration.label
+                .font(.system(size: 11, weight: .medium))
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundStyle(Theme.muted)
+            configuration.content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(PearlPanel())
+    }
+}
+
+struct PearlPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .medium))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .foregroundStyle(Theme.paper)
+            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 5))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.45)
+    }
+}
+
+struct PearlSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .foregroundStyle(configuration.role == .destructive ? Color.red : Theme.accent)
+            .background(Theme.paper, in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.rule))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.45)
+    }
+}
+
+struct VoiceInitial: View {
+    let name: String
+    var size: CGFloat = 48
+
+    var body: some View {
+        Text(String(name.prefix(1)).uppercased())
+            .font(Theme.editorial(size * 0.48))
+            .foregroundStyle(Theme.accent)
+            .frame(width: size, height: size)
+            .background(Theme.accentLight.opacity(0.5), in: Circle())
+            .accessibilityHidden(true)
     }
 }
 
 struct PrivacyFooter: View {
     var body: some View {
         Label("Processed on your Mac", systemImage: "checkmark.shield")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 11))
+            .foregroundStyle(Theme.muted)
     }
 }
 
@@ -65,8 +145,8 @@ struct Caption: View {
 
     var body: some View {
         Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 11))
+            .foregroundStyle(Theme.muted)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -87,7 +167,7 @@ struct WarningLabel: View {
     var body: some View {
         Label(message, systemImage: "exclamationmark.circle")
             .font(.callout)
-            .foregroundStyle(.orange)
+            .foregroundStyle(Color(red: 0.55, green: 0.30, blue: 0.08))
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -95,30 +175,29 @@ struct WarningLabel: View {
 struct MessageBar: View {
     let text: String
     let isError: Bool
-    /// An optional button such as "Undo".
     var actionTitle: String? = nil
     var action: () -> Void = {}
     let dismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(isError ? Color.red : Theme.success)
             Text(text)
+                .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
             if let actionTitle {
                 Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
             }
             Button("Dismiss", action: dismiss)
-                .buttonStyle(.borderless)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        .background(isError ? Color.red.opacity(0.18) : Theme.success.opacity(0.18), in: RoundedRectangle(cornerRadius: 10))
-        .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+        .padding(16)
+        .foregroundStyle(Theme.ink)
+        .background(Theme.paper, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isError ? Color.red.opacity(0.4) : Theme.rule))
+        .shadow(color: Theme.ink.opacity(0.10), radius: 12, y: 5)
+        .accessibilityElement(children: .contain)
     }
 }
 

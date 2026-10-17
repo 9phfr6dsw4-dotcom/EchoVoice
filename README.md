@@ -28,9 +28,11 @@
 
 EchoVoice uses [Breeze TTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2), run on Apple Silicon with MLX through [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift). Breeze speaks English and Chinese. Its model license allows research and non-commercial use only.
 
-## Screenshots
+## Pearl Editorial
 
-Screenshots are coming soon.
+Warm ivory surfaces, a deep teal accent, editorial typography, and top navigation give EchoVoice a focused workspace. The script editor sits beside its voice and free-form delivery controls; Voices, Recordings, and Settings share the same design. Existing voices, audio, scripts, settings, and models carry over.
+
+Native captures of all four screens at the default and minimum window sizes are produced by CI using an isolated fictional library. The `EchoVoice-design-captures` artifact is attached to each CI run.
 
 ## Install
 
@@ -66,3 +68,4 @@ bash Scripts/smoke-test.sh       # launch the packaged app from a clean folder
 ## License
 
 MIT. See [LICENSE](LICENSE). Breeze TTS 2's weights have their own license.
+

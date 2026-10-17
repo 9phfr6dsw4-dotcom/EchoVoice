@@ -10,7 +10,7 @@ struct RecordingsView: View {
 
     var body: some View {
         let items = model.library.searchHistory(query)
-        Page(title: "Recordings", subtitle: "Your generated audio, saved automatically.") {
+        Page(title: "Your recordings", subtitle: "A collection of moments. Every take, saved automatically.") {
             HStack(spacing: 12) {
                 TextField("Search recordings", text: $query)
                     .textFieldStyle(.roundedBorder)
@@ -27,14 +27,14 @@ struct RecordingsView: View {
                     Text("Generate your first audio to get started.")
                 } actions: {
                     Button("Go to Generate") { model.section = .generate }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PearlPrimaryButtonStyle())
                 }
                 .frame(maxWidth: .infinity, minHeight: 240)
             } else if items.isEmpty {
                 ContentUnavailableView.search(text: query)
                     .frame(maxWidth: .infinity, minHeight: 200)
             } else {
-                LazyVStack(spacing: 10) {
+                LazyVStack(spacing: 16) {
                     ForEach(items) { item in
                         RecordingRow(item: item, delete: { deleting = item })
                     }
@@ -65,16 +65,22 @@ struct RecordingRow: View {
     let item: HistoryItem
     let delete: () -> Void
 
+    private var metadata: String {
+        var parts = [item.voiceName, TimeText.clock(item.seconds), DateText.medium(item.date)]
+        if let direction = item.direction { parts.append("“\(direction)”") }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
         let url = URL(fileURLWithPath: item.filePath)
         let exists = model.fileExists(item)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
                 Button {
                     model.playback.toggle(url)
                 } label: {
-                    Image(systemName: model.playback.isPlaying(url) ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 28))
+                    Image(systemName: model.playback.isPlaying(url) ? "pause.circle" : "play.circle")
+                        .font(.system(size: 36, weight: .ultraLight))
                         .foregroundStyle(exists ? Theme.accent : Color.secondary)
                 }
                 .buttonStyle(.plain)
@@ -82,20 +88,13 @@ struct RecordingRow: View {
                 .accessibilityLabel(model.playback.isPlaying(url) ? "Pause" : "Play")
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.script)
+                        .font(Theme.editorial(20))
+                        .lineSpacing(3)
                         .lineLimit(3)
-                    HStack(spacing: 6) {
-                        Text(item.voiceName)
-                        Text("·")
-                        Text(TimeText.clock(item.seconds)).monospacedDigit()
-                        Text("·")
-                        Text(DateText.medium(item.date))
-                        if let direction = item.direction {
-                            Text("·")
-                            Text("“\(direction)”").italic()
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text(metadata)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                     if !exists {
                         WarningLabel(message: "The file was moved or deleted.")
                     } else if !item.cutOffParts.isEmpty {
@@ -126,8 +125,8 @@ struct RecordingRow: View {
             .controlSize(.small)
             .disabled(model.isGenerating)
         }
-        .padding(12)
-        .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+        .modifier(PearlPanel())
         .draggable(url)
     }
 }
+
