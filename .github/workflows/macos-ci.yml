@@ -72,7 +72,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,22 +96,3 @@ jobs:
               --target "$GITHUB_SHA" --title "EchoVoice $version" \
               --notes-file "docs/releases/$version.md"
           fi
-      - name: Remove the merged temporary branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" > merged-prs.json
-          python3 - <<'PYCODE'
-          import json, os, subprocess
-          repo = os.environ["GITHUB_REPOSITORY"]
-          for pr in json.load(open("merged-prs.json")):
-              head = pr["head"]
-              if (pr.get("merged_at") and pr["merge_commit_sha"] == os.environ["GITHUB_SHA"]
-                      and head["repo"] and head["repo"]["full_name"] == repo
-                      and head["ref"] == "pearl-editorial"):
-                  current = subprocess.run(["gh", "api", f"repos/{repo}/git/ref/heads/{head['ref']}"],
-                                           capture_output=True, text=True)
-                  if current.returncode == 0 and json.loads(current.stdout)["object"]["sha"] == head["sha"]:
-                      subprocess.run(["gh", "api", "--method", "DELETE",
-                                      f"repos/{repo}/git/refs/heads/{head['ref']}"], check=True)
-          PYCODE

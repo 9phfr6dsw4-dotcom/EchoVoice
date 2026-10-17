@@ -1,5 +1,18 @@
 import AppKit
+import EchoVoiceCore
 import SwiftUI
+
+private struct WindowWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = CGFloat(PageLayout.standardWindowWidth)
+}
+
+extension EnvironmentValues {
+    /// The window's current width, set once by `RootView`, so pages can grow with the window.
+    var windowWidth: CGFloat {
+        get { self[WindowWidthKey.self] }
+        set { self[WindowWidthKey.self] = newValue }
+    }
+}
 
 /// Pearl Editorial: warm paper, deep teal, and a comfortable reading measure.
 enum Theme {
@@ -41,21 +54,27 @@ struct Page<Content: View>: View {
     let subtitle: String
     var showsPrivacyFooter = true
     @ViewBuilder let content: () -> Content
+    @Environment(\.windowWidth) private var windowWidth
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                PageHeader(title: title, subtitle: subtitle)
-                content()
-                if showsPrivacyFooter {
-                    PrivacyFooter()
-                        .padding(.top, 4)
+        // The page is at least as tall as the window, so a flexible part (the script editor) can
+        // grow into the spare room. When there isn't any, the page scrolls as before.
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    PageHeader(title: title, subtitle: subtitle)
+                    content()
+                    if showsPrivacyFooter {
+                        PrivacyFooter()
+                            .padding(.top, 4)
+                    }
                 }
+                .padding(.horizontal, 40)
+                .padding(.vertical, 34)
+                .frame(maxWidth: CGFloat(PageLayout.contentWidth(forWindow: Double(windowWidth))),
+                       minHeight: proxy.size.height, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .padding(.horizontal, 40)
-            .padding(.vertical, 34)
-            .frame(maxWidth: 1080, alignment: .topLeading)
-            .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(Theme.canvas)
     }

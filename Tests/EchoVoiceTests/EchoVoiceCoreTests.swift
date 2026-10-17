@@ -225,6 +225,20 @@ final class GenerationPlanTests: XCTestCase {
         XCTAssertEqual(wrapping.seed(forPart: 1), 0xE4D9_7177_1B65_2C20)
     }
 
+    func testPagesKeepTheirSizeUpToTheStandardWindowAndGrowBeyondIt() {
+        XCTAssertEqual(PageLayout.contentWidth(forWindow: 900), 1080)
+        XCTAssertEqual(PageLayout.contentWidth(forWindow: 1080), 1080)
+        XCTAssertEqual(PageLayout.contentWidth(forWindow: 1180), 1080)
+        XCTAssertEqual(PageLayout.contentWidth(forWindow: 1500), 1400)
+        XCTAssertEqual(PageLayout.contentWidth(forWindow: 1920), 1680)
+        XCTAssertEqual(PageLayout.contentWidth(forWindow: 5120), 1680)
+        XCTAssertEqual(PageLayout.sideColumnWidth(forWindow: 900), 194)
+        XCTAssertEqual(PageLayout.sideColumnWidth(forWindow: 1180), 194)
+        XCTAssertEqual(PageLayout.sideColumnWidth(forWindow: 1500), 242, accuracy: 0.0001)
+        XCTAssertEqual(PageLayout.sideColumnWidth(forWindow: 1920), 290)
+        XCTAssertEqual(PageLayout.sideColumnWidth(forWindow: 5120), 290)
+    }
+
     func testCutOffAndRemainingTime() throws {
         XCTAssertTrue(GenerationPlan.wasCutOff(steps: 750))
         XCTAssertFalse(GenerationPlan.wasCutOff(steps: 749))

@@ -32,7 +32,7 @@ EchoVoice uses [Breeze TTS 2](https://huggingface.co/BreezeBlue/Breeze-TTS-2), r
 
 Warm ivory surfaces, a deep teal accent, editorial typography, and top navigation give EchoVoice a focused workspace. The script editor sits beside its voice and free-form delivery controls; Voices, Recordings, and Settings share the same design. Existing voices, audio, scripts, settings, and models carry over.
 
-Native captures of all four screens at the default and minimum window sizes are produced by CI using an isolated fictional library. The `EchoVoice-design-captures` artifact is attached to each CI run.
+Native captures of all four screens at the default, minimum and a large full-screen window size are produced by CI using an isolated fictional library. The `EchoVoice-design-captures` artifact is attached to each CI run.
 
 ## Install
 

@@ -60,32 +60,35 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(spacing: 0) {
-            navigationBar
-            Rectangle()
-                .fill(Theme.rule)
-                .frame(height: 1)
-            // Messages float over the page, so Undo and errors never shift the editor.
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .top) {
-                    VStack(spacing: 8) {
-                        if let message = model.errorMessage {
-                            MessageBar(text: message, isError: true, dismiss: { model.errorMessage = nil })
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                navigationBar(windowWidth: proxy.size.width)
+                Rectangle()
+                    .fill(Theme.rule)
+                    .frame(height: 1)
+                // Messages float over the page, so Undo and errors never shift the editor.
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .top) {
+                        VStack(spacing: 8) {
+                            if let message = model.errorMessage {
+                                MessageBar(text: message, isError: true, dismiss: { model.errorMessage = nil })
+                            }
+                            if let message = model.statusMessage {
+                                MessageBar(
+                                    text: message,
+                                    isError: false,
+                                    actionTitle: model.canUndoNewScript ? "Undo" : nil,
+                                    action: { model.undoNewScript() },
+                                    dismiss: { model.statusMessage = nil }
+                                )
+                            }
                         }
-                        if let message = model.statusMessage {
-                            MessageBar(
-                                text: message,
-                                isError: false,
-                                actionTitle: model.canUndoNewScript ? "Undo" : nil,
-                                action: { model.undoNewScript() },
-                                dismiss: { model.statusMessage = nil }
-                            )
-                        }
+                        .padding(12)
+                        .frame(maxWidth: 720)
                     }
-                    .padding(12)
-                    .frame(maxWidth: 720)
-                }
+            }
+            .environment(\.windowWidth, proxy.size.width)
         }
         .background(Theme.canvas)
         .foregroundStyle(Theme.ink)
@@ -102,7 +105,7 @@ struct RootView: View {
         }
     }
 
-    private var navigationBar: some View {
+    private func navigationBar(windowWidth: CGFloat) -> some View {
         HStack(spacing: 30) {
             HStack(spacing: 10) {
                 Text("E")
@@ -141,7 +144,9 @@ struct RootView: View {
                 .foregroundStyle(Theme.muted)
         }
         .padding(.horizontal, 30)
-        .frame(maxWidth: 1180)
+        // The same width as the page's content column, so the logo and the headline stay lined up
+        // at every window size.
+        .frame(maxWidth: CGFloat(PageLayout.contentWidth(forWindow: Double(windowWidth))))
         .frame(maxWidth: .infinity)
         .background(Theme.canvas)
     }

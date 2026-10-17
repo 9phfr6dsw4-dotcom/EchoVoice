@@ -29,9 +29,9 @@
 ## Pearl Editorial design
 
 - A deliberate light palette of warm ivory, deep teal, and ink, with Baskerville for headings and scripts and system text for controls.
-- Top navigation keeps the original four destinations and keyboard shortcuts. Content has a maximum reading width instead of stretching across a large display.
+- Top navigation keeps the original four destinations and keyboard shortcuts. The content column follows the window width up to a reading limit of 1680 points, and the Generate page grows to the height of the window: the script editor takes the spare room, and the voice column widens a little. At the standard window size nothing changes; below the minimum height the page scrolls. The pure sizing rules live in `PageLayout` and are unit-tested.
 - The voice picker and free-form delivery field sit beside the script. Playback, regeneration, drag-out, deletion, and New Script with Undo keep their original behavior. No saved-data schema or preference keys change.
-- CI captures the actual packaged SwiftUI screens at 1180×840 and 900×620 with temporary fictional fixtures. Its capture entry point requires GitHub Actions; it does not access the normal library or download the voice model.
+- CI captures the actual packaged SwiftUI screens at 1180×840, 900×620 and 2560×1440 (a full-screen stand-in) with temporary fictional fixtures, and fails if the script editor does not grow at the large size. Its capture entry point requires GitHub Actions; it does not access the normal library or download the voice model.
 
 ## App icon
 
