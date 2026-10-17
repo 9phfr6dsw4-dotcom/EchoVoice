@@ -6,6 +6,7 @@ import SwiftUI
 struct GenerateView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var scriptFocused: Bool
+    @Environment(\.windowWidth) private var windowWidth
 
     var body: some View {
         Page(title: "Every word, considered.", subtitle: "Your private voice studio. Turn a script into something worth hearing.", showsPrivacyFooter: false) {
@@ -19,7 +20,7 @@ struct GenerateView: View {
                         Rectangle().fill(Theme.rule).frame(height: 1)
                         deliveryField
                     }
-                    .frame(width: 194, alignment: .topLeading)
+                    .frame(width: CGFloat(PageLayout.sideColumnWidth(forWindow: Double(windowWidth))), alignment: .topLeading)
                     .padding(.top, 6)
                     VStack(alignment: .leading, spacing: 20) {
                         scriptField
@@ -83,7 +84,7 @@ struct GenerateView: View {
                 .focused($scriptFocused)
                 .scrollContentBackground(.hidden)
                 .padding(20)
-                .frame(minHeight: 290)
+                .frame(minHeight: 290, maxHeight: .infinity)
                 .overlay(alignment: .topLeading) {
                     if model.script.isEmpty {
                         Text("Begin your next story…")

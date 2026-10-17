@@ -59,13 +59,29 @@ enum CIReviewCapture {
         application.setActivationPolicy(.accessory)
         application.finishLaunching()
 
+        var editorSizes: [String: CGSize] = [:]
         for (name, size) in [("standard", CGSize(width: 1180, height: 840)),
-                             ("minimum", CGSize(width: 900, height: 620))] {
+                             ("minimum", CGSize(width: 900, height: 620)),
+                             ("large", CGSize(width: 2560, height: 1440))] {
             for section in AppSection.allCases {
                 model.section = section
                 try render(RootView().environment(model), size: size,
-                           to: output.appendingPathComponent("\(section.rawValue)-\(name).png"))
+                           to: output.appendingPathComponent("\(section.rawValue)-\(name).png")) { host in
+                    if section == .generate {
+                        editorSizes[name] = try scriptEditorSize(in: host)
+                    }
+                }
             }
+        }
+        // Full screen must use the room: the script editor grows with the window instead of
+        // staying at its small-window size.
+        guard let standard = editorSizes["standard"], let large = editorSizes["large"] else {
+            throw CaptureError(message: "The script editor was not measured.")
+        }
+        guard large.width >= standard.width + 400, large.height >= 450 else {
+            throw CaptureError(message: "The script editor did not grow with the window: "
+                + "\(Int(standard.width))x\(Int(standard.height)) at 1180x840, "
+                + "\(Int(large.width))x\(Int(large.height)) at 2560x1440.")
         }
         // Also exercise the first-launch state against an empty, isolated library.
         let empty = AppModel(defaults: defaults, supportRoot: fixture.appendingPathComponent("Empty"))
@@ -77,7 +93,8 @@ enum CIReviewCapture {
         }
     }
 
-    private static func render<V: View>(_ content: V, size: CGSize, to url: URL) throws {
+    private static func render<V: View>(_ content: V, size: CGSize, to url: URL,
+                                        inspect: ((NSView) throws -> Void)? = nil) throws {
         let rect = CGRect(origin: .zero, size: size)
         let host = NSHostingView(rootView: content.frame(width: size.width, height: size.height))
         let window = NSWindow(contentRect: rect, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -87,6 +104,7 @@ enum CIReviewCapture {
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.4))
         host.layoutSubtreeIfNeeded()
         host.displayIfNeeded()
+        try inspect?(host)
         guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
             throw CaptureError(message: "Could not allocate a bitmap for \(url.lastPathComponent).")
         }
@@ -97,6 +115,23 @@ enum CIReviewCapture {
         try png.write(to: url)
         window.orderOut(nil)
         window.contentView = nil
+    }
+
+    /// The size of the script editor on the Generate page, as it was laid out.
+    private static func scriptEditorSize(in host: NSView) throws -> CGSize {
+        guard let text = firstTextView(in: host) else {
+            throw CaptureError(message: "The script editor was not found on the Generate page.")
+        }
+        let frame = host.convert((text.enclosingScrollView ?? text).bounds, from: text.enclosingScrollView ?? text)
+        return frame.size
+    }
+
+    private static func firstTextView(in view: NSView) -> NSTextView? {
+        if let text = view as? NSTextView { return text }
+        for child in view.subviews {
+            if let found = firstTextView(in: child) { return found }
+        }
+        return nil
     }
 
     private struct CaptureError: Error {
