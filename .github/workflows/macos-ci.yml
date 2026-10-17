@@ -44,6 +44,15 @@ jobs:
         run: bash Scripts/package-app.sh
       - name: Launch app smoke test
         run: bash Scripts/smoke-test.sh
+      - name: Capture redesigned screens with an isolated fictional library
+        run: dist/verify-extracted/EchoVoice.app/Contents/MacOS/EchoVoice --ci-design-review
+      - name: Upload native design captures
+        uses: actions/upload-artifact@v4
+        with:
+          name: EchoVoice-design-captures
+          path: ${{ runner.temp }}/EchoVoice-design-captures/*.png
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload finished app ZIP
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
@@ -54,3 +63,56 @@ jobs:
             dist/EchoVoice.zip.sha256
           if-no-files-found: error
           retention-days: 30
+
+
+  release:
+    name: Publish verified release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: EchoVoice-${{ github.run_number }}
+          path: release
+      - name: Verify release checksum
+        working-directory: release
+        run: shasum -a 256 -c EchoVoice.zip.sha256
+      - name: Publish the tested ZIP and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(python3 -c 'import plistlib; print(plistlib.load(open("Resources/Info.plist", "rb"))["CFBundleShortVersionString"])')"
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+          else
+            gh release create "$tag" release/EchoVoice.zip release/EchoVoice.zip.sha256 \
+              --target "$GITHUB_SHA" --title "EchoVoice $version" \
+              --notes-file "docs/releases/$version.md"
+          fi
+      - name: Remove the merged temporary branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" > merged-prs.json
+          python3 - <<'PYCODE'
+          import json, os, subprocess
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for pr in json.load(open("merged-prs.json")):
+              head = pr["head"]
+              if (pr.get("merged_at") and pr["merge_commit_sha"] == os.environ["GITHUB_SHA"]
+                      and head["repo"] and head["repo"]["full_name"] == repo
+                      and head["ref"] == "pearl-editorial"):
+                  current = subprocess.run(["gh", "api", f"repos/{repo}/git/ref/heads/{head['ref']}"],
+                                           capture_output=True, text=True)
+                  if current.returncode == 0 and json.loads(current.stdout)["object"]["sha"] == head["sha"]:
+                      subprocess.run(["gh", "api", "--method", "DELETE",
+                                      f"repos/{repo}/git/refs/heads/{head['ref']}"], check=True)
+          PYCODE

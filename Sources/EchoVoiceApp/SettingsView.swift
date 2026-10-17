@@ -6,9 +6,9 @@ struct SettingsView: View {
 
     var body: some View {
         @Bindable var model = model
-        Page(title: "Settings", subtitle: "Quality, where audio is saved, and how EchoVoice uses your Mac's memory.") {
+        Page(title: "Thoughtful settings", subtitle: "A few details, just the way you like them. Everything stays on your Mac.") {
             GroupBox("Quality & speed") {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 20) {
                     ForEach(ModelQuality.allCases) { quality in
                         qualityRow(quality)
                     }
@@ -91,7 +91,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(quality.title)
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .medium))
                     if downloaded {
                         Text("On this Mac")
                             .font(.caption2.weight(.semibold))
@@ -121,3 +121,4 @@ struct SettingsView: View {
         .contentShape(Rectangle())
     }
 }
+

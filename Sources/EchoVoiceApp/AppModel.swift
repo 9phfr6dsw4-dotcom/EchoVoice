@@ -126,11 +126,11 @@ final class AppModel {
     private var downloadTask: Task<Void, Never>?
     @ObservationIgnored private var unloadTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, supportRoot: URL? = nil) {
         self.defaults = defaults
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let root = support.appendingPathComponent("EchoVoice", isDirectory: true)
+        let root = supportRoot ?? support.appendingPathComponent("EchoVoice", isDirectory: true)
         store = LibraryStore(fileURL: root.appendingPathComponent("library.json"))
         voicesFolder = root.appendingPathComponent("Voices", isDirectory: true)
         engine = VoiceEngine(modelsFolder: root.appendingPathComponent("Models", isDirectory: true))
@@ -511,3 +511,4 @@ final class AppModel {
         }
     }
 }
+
