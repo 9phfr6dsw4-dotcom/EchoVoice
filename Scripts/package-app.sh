@@ -11,8 +11,8 @@ VERIFY_DIR="dist/verify-extracted"
 ZIP="dist/EchoVoice.zip"
 DERIVED=".xcbuild"
 PRODUCTS="$DERIVED/Build/Products/Release"
-VERSION="0.3.1"
-BUILD="4"
+VERSION="0.4.0"
+BUILD="5"
 
 fail() {
     echo "error: $*" >&2
