@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 struct EchoVoiceApp: App {
     @State private var model: AppModel
+    @State private var updates: UpdateController
 
     init() {
         if CommandLine.arguments.contains("--ci-design-review") {
@@ -14,20 +15,28 @@ struct EchoVoiceApp: App {
         if CommandLine.arguments.contains("--mlx-self-test") {
             MLXSelfTest.runAndExit()
         }
-        _model = State(initialValue: AppModel())
+        let model = AppModel()
+        _model = State(initialValue: model)
+        _updates = State(initialValue: UpdateController(model: model))
     }
 
     var body: some Scene {
         WindowGroup("EchoVoice") {
             RootView()
                 .environment(model)
+                .environment(updates)
                 .frame(minWidth: 900, minHeight: 620)
+                .task { updates.start() }
         }
         .defaultSize(width: 1180, height: 840)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { model.section = .settings }
                     .keyboardShortcut(",", modifiers: .command)
+            }
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updates.checkForUpdates() }
+                    .disabled(!updates.canCheckForUpdates)
             }
             CommandMenu("Audio") {
                 Button("Generate Audio") {

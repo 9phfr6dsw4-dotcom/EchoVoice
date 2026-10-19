@@ -127,6 +127,9 @@ struct AddVoiceSheet: View {
     /// True from Record until that recording has been handed to `use`.
     @State private var pendingRecording = false
 
+    /// Recording, preparing or transcribing a clip. An update waits for this.
+    private var voiceWorkUnderWay: Bool { recorder.isRecording || isPreparing || isTranscribing }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add a Voice")
@@ -203,9 +206,13 @@ struct AddVoiceSheet: View {
                 use(url, fromRecording: true)
             }
         }
+        .onChange(of: voiceWorkUnderWay) { _, busy in
+            model.voiceWorkUnderWay = busy
+        }
         .onDisappear {
             pendingRecording = false
             recorder.stop()
+            model.voiceWorkUnderWay = false
         }
     }
 
