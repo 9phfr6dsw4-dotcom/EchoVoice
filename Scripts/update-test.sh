@@ -98,13 +98,14 @@ write_feed "$GOOD_SIGNATURE" "$WORK_DIR/appcast-good.xml"
 write_feed "$WRONG_SIGNATURE" "$WORK_DIR/appcast-wrong-signature.xml"
 
 # Sparkle's own tool must agree with the release tool's signatures.
-SIGN_UPDATE="$(find "$ROOT_DIR/.build/artifacts" -type f -path '*/bin/sign_update' | head -n 1)"
+# xcodebuild keeps binary packages under .xcbuild/SourcePackages; a missing folder must not fail the test.
+SIGN_UPDATE="$(find "$ROOT_DIR/.xcbuild/SourcePackages" -type f -path '*/bin/sign_update' 2>/dev/null | head -n 1 || true)"
 if [[ -x "$SIGN_UPDATE" ]]; then
     printf '%s' "$TEST_SPARKLE_KEY" | "$SIGN_UPDATE" --verify --ed-key-file - "$ARCHIVE" "$GOOD_SIGNATURE"
     printf '%s' "$TEST_SPARKLE_KEY" | "$SIGN_UPDATE" --verify --ed-key-file - "$WORK_DIR/appcast-good.xml"
     echo "Sparkle's sign_update accepts the archive and feed signatures."
 else
-    echo "Sparkle's sign_update wasn't found in .build/artifacts; the app's own check below still applies."
+    echo "Sparkle's sign_update wasn't found in .xcbuild/SourcePackages; the app's own check below still applies."
 fi
 
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$FEED_DIR" > "$SERVER_LOG" 2>&1 &
