@@ -64,7 +64,7 @@ enum CIReviewCapture {
                              ("large", CGSize(width: 2560, height: 1440))] {
             for section in AppSection.allCases {
                 model.section = section
-                try render(RootView().environment(model), size: size,
+                try render(RootView().environment(model).environment(UpdateController(model: model)), size: size,
                            to: output.appendingPathComponent("\(section.rawValue)-\(name).png")) { host in
                     if section == .generate {
                         editorSizes[name] = try scriptEditorSize(in: host)
@@ -84,7 +84,7 @@ enum CIReviewCapture {
         }
         // Also exercise the first-launch state against an empty, isolated library.
         let empty = AppModel(defaults: defaults, supportRoot: fixture.appendingPathComponent("Empty"))
-        try render(RootView().environment(empty), size: CGSize(width: 900, height: 620),
+        try render(RootView().environment(empty).environment(UpdateController(model: empty)), size: CGSize(width: 900, height: 620),
                    to: output.appendingPathComponent("first-launch.png"))
         // The generated library must survive viewing every page byte-for-byte.
         guard try Data(contentsOf: store.fileURL) == originalLibrary else {

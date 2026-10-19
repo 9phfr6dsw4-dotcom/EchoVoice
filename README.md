@@ -24,7 +24,7 @@
 - **Recordings.** Every generated audio file with its script, voice and date. Play it, find it in Finder, drag it into another app, reuse the script, or make it again: **Same Take** repeats it with the same seed, **New Take** gives a fresh reading.
 - **Saved automatically** as WAV files in Downloads → EchoVoice, or a folder you choose.
 - **Easy on your Mac.** The model loads when you need it and releases its memory after a few idle minutes.
-- **Private.** Everything runs on your Mac. The internet is used only once, to download the voice model.
+- **Private.** Everything runs on your Mac. The internet is used to download the voice model, and to check GitHub for a new version of EchoVoice. Your voices, scripts and audio are never uploaded.
 
 EchoVoice runs Qwen3-TTS 1.7B Base (8-bit) and Chatterbox Turbo (FP16) locally on Apple Silicon. Qwen uses your reference clip and its exact transcript; Chatterbox uses the clip without requiring its transcript. Qwen stays selected when updating.
 
@@ -38,7 +38,9 @@ Native captures of all four screens at the default, minimum and a large full-scr
 
 1. Download `EchoVoice.zip` from the [latest release](https://github.com/9phfr6dsw4-dotcom/EchoVoice/releases/latest) and unzip it.
 2. Drag **EchoVoice** into **Applications** (choose **Replace** when updating).
-3. Open it. If macOS blocks it, open **System Settings → Privacy & Security** and choose **Open Anyway**. (Builds are ad-hoc signed, so macOS treats every new build as a new app.)
+3. Open it. If macOS blocks it, open **System Settings → Privacy & Security** and choose **Open Anyway**.
+
+From 0.6.0 on, EchoVoice updates itself: it checks for a new version when it starts and every hour, and installs it once no voice is being made. **Check for Updates…** is in the app menu, and the **Settings** page has the options.
 4. The first time you generate audio, the voice model downloads once (a few GB). You can also start the download from the Generate page or Settings.
 
 You need an Apple Silicon Mac with macOS 26. 16 GB of memory is comfortable.

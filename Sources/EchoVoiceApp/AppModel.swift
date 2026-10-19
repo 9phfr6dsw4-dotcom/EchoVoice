@@ -87,6 +87,8 @@ final class AppModel {
     }
     private(set) var isManagingModel = false
     var isModelBusy: Bool { isGenerating || isDownloading || isManagingModel }
+    /// A voice clip is being recorded, prepared or transcribed. The Voices page keeps this up to date.
+    var voiceWorkUnderWay = false
 
     // Settings.
     var playWhenDone: Bool {

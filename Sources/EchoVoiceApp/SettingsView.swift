@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(UpdateController.self) private var updates
 
     var body: some View {
         @Bindable var model = model
@@ -61,11 +62,36 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
             }
+            GroupBox("Updates") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Check for updates automatically", isOn: Binding(
+                        get: { updates.automaticallyChecks },
+                        set: { updates.setAutomaticallyChecks($0) }
+                    ))
+                    Caption("EchoVoice looks for a new version when it starts and then every hour.")
+                    Toggle("Download and install updates automatically", isOn: Binding(
+                        get: { updates.automaticallyInstalls },
+                        set: { updates.setAutomaticallyInstalls($0) }
+                    ))
+                    .disabled(!updates.automaticallyChecks)
+                    Caption("EchoVoice installs a new version and reopens by itself, once no voice is being made, downloaded, recorded or transcribed. Your voices, scripts, recordings and settings stay as they are.")
+                    HStack {
+                        Text(lastUpdateCheckText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Check for Updates…") { updates.checkForUpdates() }
+                            .disabled(!updates.canCheckForUpdates)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
+            }
             GroupBox("Privacy") {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Everything is processed on this Mac. Your voices, scripts and audio are never uploaded.", systemImage: "lock.shield")
                         .fixedSize(horizontal: false, vertical: true)
-                    Label("The internet is used only to download the voice model.", systemImage: "arrow.down.circle")
+                    Label("The internet is used to download the voice model and to check GitHub for a new version of EchoVoice.", systemImage: "arrow.down.circle")
                         .fixedSize(horizontal: false, vertical: true)
                     Label("No account, no analytics, no tracking.", systemImage: "eye.slash")
                         .fixedSize(horizontal: false, vertical: true)
@@ -75,6 +101,11 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
             }
         }
+    }
+
+    private var lastUpdateCheckText: String {
+        guard let date = updates.lastCheckDate else { return "Not checked for updates yet." }
+        return "Last checked \(date.formatted(date: .abbreviated, time: .shortened))."
     }
 
     private var memoryStatus: String {

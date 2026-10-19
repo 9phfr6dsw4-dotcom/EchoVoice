@@ -11,8 +11,11 @@ VERIFY_DIR="dist/verify-extracted"
 ZIP="dist/EchoVoice.zip"
 DERIVED=".xcbuild"
 PRODUCTS="$DERIVED/Build/Products/Release"
-VERSION="0.5.0"
-BUILD="6"
+VERSION="0.6.0"
+BUILD="7"
+SIGNING_REPORT="dist/signing.txt"
+SIGN_MODE="${SIGN_MODE:-adhoc}"
+export SIGN_MODE
 
 fail() {
     echo "error: $*" >&2
@@ -42,10 +45,26 @@ xcodebuild build \
 
 test -x "$PRODUCTS/EchoVoiceApp" || fail "the built program is missing at $PRODUCTS/EchoVoiceApp"
 
-rm -rf "$APP" "$ICONSET" "$ICON_OUT" "$VERIFY_DIR" "$ZIP" "$ZIP.sha256"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+rm -rf "$APP" "$ICONSET" "$ICON_OUT" "$VERIFY_DIR" "$ZIP" "$ZIP.sha256" "$SIGNING_REPORT" "dist/notarize"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 install -m 755 "$PRODUCTS/EchoVoiceApp" "$APP/Contents/MacOS/EchoVoice"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/Acknowledgements.txt "$APP/Contents/Resources/Acknowledgements.txt"
+
+# Sparkle comes from the exact version the package resolved and checksummed, in the Xcode build's
+# package folders (xcodebuild puts binary packages under .xcbuild/SourcePackages).
+SPARKLE_FRAMEWORKS=()
+while IFS= read -r framework; do
+    SPARKLE_FRAMEWORKS+=("$framework")
+done < <(find "$DERIVED/SourcePackages" -type d -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' -prune)
+[ "${#SPARKLE_FRAMEWORKS[@]}" -eq 1 ] || fail "expected one Sparkle.framework under $DERIVED/SourcePackages, found ${#SPARKLE_FRAMEWORKS[@]}"
+ditto "${SPARKLE_FRAMEWORKS[0]}" "$APP/Contents/Frameworks/Sparkle.framework"
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Frameworks/Sparkle.framework/Resources/Info.plist" | grep -Fx '2.10.0' || fail "the embedded Sparkle isn't 2.10.0"
+test -x "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" || fail "Sparkle's Autoupdate helper is missing"
+test -x "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater" || fail "Sparkle's Updater is missing"
+otool -L "$APP/Contents/MacOS/EchoVoice" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle' >/dev/null || fail "the program doesn't link Sparkle through @rpath"
+otool -l "$APP/Contents/MacOS/EchoVoice" | grep -F 'path @executable_path/../Frameworks' >/dev/null || fail "the program has no rpath to Contents/Frameworks"
+grep -F 'Sparkle 2.10.0' "$APP/Contents/Resources/Acknowledgements.txt" >/dev/null || fail "Sparkle's licence is missing from Acknowledgements.txt"
 
 # Resource bundles from the packages (including MLX's compiled GPU code) go in Contents/Resources,
 # where MLX looks for them next to the program.
@@ -102,8 +121,17 @@ expect_plist "$APP" CFBundleShortVersionString "$VERSION"
 expect_plist "$APP" CFBundleVersion "$BUILD"
 expect_plist "$APP" CFBundleIconFile AppIcon
 expect_plist "$APP" CFBundleIconName AppIcon
-codesign --force --deep --sign - "$APP"
-codesign --verify --deep --strict "$APP"
+expect_plist "$APP" CFBundleIdentifier com.echovoice.app
+expect_plist "$APP" SUFeedURL "https://github.com/9phfr6dsw4-dotcom/EchoVoice/releases/latest/download/appcast.xml"
+
+# Signing is the last change to the app; everything after only zips, checks and hashes it.
+bash Scripts/sign-app.sh "$APP"
+
+NOTARIZED="no"
+if [[ "$SIGN_MODE" == "developer-id" ]]; then
+    bash Scripts/notarize.sh "$APP"
+    NOTARIZED="yes"
+fi
 
 # Verify the exact ZIP people download.
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
@@ -117,8 +145,21 @@ test -s "$EXTRACTED/Contents/Resources/Assets.car" || fail "Assets.car (the macO
 expect_plist "$EXTRACTED" CFBundleShortVersionString "$VERSION"
 expect_plist "$EXTRACTED" CFBundleIconName AppIcon
 codesign --verify --deep --strict "$EXTRACTED"
+if [[ "$NOTARIZED" == "yes" ]]; then
+    xcrun stapler validate "$EXTRACTED"
+    spctl --assess --type execute --verbose=2 "$EXTRACTED"
+fi
+test -x "$EXTRACTED/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" || fail "Sparkle's Autoupdate helper is missing inside the ZIP"
+expect_plist "$EXTRACTED" CFBundleVersion "$BUILD"
+expect_plist "$EXTRACTED" SUFeedURL "https://github.com/9phfr6dsw4-dotcom/EchoVoice/releases/latest/download/appcast.xml"
 file "$EXTRACTED/Contents/MacOS/EchoVoice"
 bash Scripts/write-checksum-sidecar.sh "$ZIP"
 ( cd dist && shasum -a 256 -c EchoVoice.zip.sha256 )
+{
+    printf 'mode=%s\n' "$SIGN_MODE"
+    printf 'notarized=%s\n' "$NOTARIZED"
+    codesign --display --requirements - "$EXTRACTED" 2>/dev/null | sed -n 's/^designated => /requirement=/p'
+} > "$SIGNING_REPORT"
+cat "$SIGNING_REPORT"
 printf 'Verified package: %s\n' "$ZIP"
 
