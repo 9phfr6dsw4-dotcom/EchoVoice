@@ -45,13 +45,12 @@ enum CIReviewCapture {
         try WAVFile.write(samples: samples, sampleRate: 24_000, to: audio)
         let script = "Some stories deserve to be heard.\n\nThe quiet moments. The unexpected turns. The words that stay with us long after the room falls silent."
         let take = HistoryItem(voiceID: voice.id, voiceName: voice.name, script: script,
-                               direction: "conversational", filePath: audio.path, seconds: 18, seed: 42,
-                               quality: .standard, cutOffParts: [], generationSeconds: 24)
+                               direction: nil, filePath: audio.path, seconds: 18, seed: 42,
+                               cutOffParts: [], generationSeconds: 24)
         let store = LibraryStore(fileURL: fixture.appendingPathComponent("library.json"))
         try store.save(LibraryState(voices: [voice, second], history: [take]))
         let originalLibrary = try Data(contentsOf: store.fileURL)
         defaults.set(script, forKey: AppModel.Keys.script)
-        defaults.set("conversational", forKey: AppModel.Keys.direction)
         defaults.set(voice.id.uuidString, forKey: AppModel.Keys.voice)
         defaults.set(fixture.path, forKey: AppModel.Keys.outputFolder)
         let model = AppModel(defaults: defaults, supportRoot: fixture)

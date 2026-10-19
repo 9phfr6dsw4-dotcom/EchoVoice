@@ -70,24 +70,12 @@ final class AppModel {
         get { storedScript }
         set { storedScript = newValue; defaults.set(newValue, forKey: Keys.script) }
     }
-    var direction: String {
-        get { storedDirection }
-        set { storedDirection = newValue; defaults.set(newValue, forKey: Keys.direction) }
-    }
     var selectedVoiceID: UUID? {
         get { storedVoiceID }
         set { storedVoiceID = newValue; defaults.set(newValue?.uuidString, forKey: Keys.voice) }
     }
 
     // Settings.
-    var quality: ModelQuality {
-        get { storedQuality }
-        set {
-            storedQuality = newValue
-            defaults.set(newValue.rawValue, forKey: Keys.quality)
-            refreshModelState()
-        }
-    }
     var playWhenDone: Bool {
         get { storedPlayWhenDone }
         set { storedPlayWhenDone = newValue; defaults.set(newValue, forKey: Keys.playWhenDone) }
@@ -102,17 +90,13 @@ final class AppModel {
     let playback = Playback()
 
     private var storedScript: String
-    private var storedDirection: String
     private var storedVoiceID: UUID?
-    private var storedQuality: ModelQuality
     private var storedPlayWhenDone: Bool
     private var storedUnloadMinutes: Int
 
     enum Keys {
         static let script = "EchoVoice.script"
-        static let direction = "EchoVoice.direction"
         static let voice = "EchoVoice.voice"
-        static let quality = "EchoVoice.quality"
         static let playWhenDone = "EchoVoice.playWhenDone"
         static let unloadMinutes = "EchoVoice.unloadMinutes"
         static let outputFolder = "EchoVoice.outputFolder"
@@ -136,9 +120,7 @@ final class AppModel {
         engine = VoiceEngine(modelsFolder: root.appendingPathComponent("Models", isDirectory: true))
 
         storedScript = defaults.string(forKey: Keys.script) ?? ""
-        storedDirection = defaults.string(forKey: Keys.direction) ?? ""
         storedVoiceID = defaults.string(forKey: Keys.voice).flatMap(UUID.init(uuidString:))
-        storedQuality = defaults.string(forKey: Keys.quality).flatMap(ModelQuality.init(rawValue:)) ?? .standard
         storedPlayWhenDone = defaults.object(forKey: Keys.playWhenDone) as? Bool ?? true
         storedUnloadMinutes = defaults.object(forKey: Keys.unloadMinutes) as? Int ?? 10
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
@@ -214,29 +196,27 @@ final class AppModel {
             errorMessage = "Add a voice first (Voices → Add Voice…)."
             return
         }
-        start(script: script, direction: direction, voice: voice, seed: UInt64.random(in: 0 ... UInt64.max), quality: quality)
+        start(script: script, voice: voice, seed: UInt64.random(in: 0 ... UInt64.max))
     }
 
-    /// Generates a recording again from Recordings: the same take (same seed and model quality) or a new one.
+    /// Generates a recording again from Recordings: the same take (same seed) or a new one. A recording
+    /// made with the old Breeze model comes out differently, because the voice model is different.
     func regenerate(_ item: HistoryItem, sameTake: Bool) {
         guard let voice = library.voice(item.voiceID) else {
             errorMessage = "The voice “\(item.voiceName)” was deleted, so this audio can't be generated again."
             return
         }
         script = item.script
-        direction = item.direction ?? ""
         selectedVoiceID = voice.id
         section = .generate
-        start(script: item.script, direction: item.direction ?? "", voice: voice,
-              seed: sameTake ? item.seed : UInt64.random(in: 0 ... UInt64.max),
-              quality: sameTake ? item.quality : quality)
+        start(script: item.script, voice: voice, seed: sameTake ? item.seed : UInt64.random(in: 0 ... UInt64.max))
     }
 
     func stop() {
         generationTask?.cancel()
     }
 
-    private func start(script: String, direction: String, voice: Voice, seed: UInt64, quality: ModelQuality) {
+    private func start(script: String, voice: Voice, seed: UInt64) {
         guard generationTask == nil else { return }
         guard downloadTask == nil else {
             errorMessage = "The voice model is still downloading. Generate audio when the download finishes."
@@ -253,10 +233,9 @@ final class AppModel {
         statusMessage = nil
         unloadTask?.cancel()
         playback.stop()
-        let trimmedDirection = direction.trimmingCharacters(in: .whitespacesAndNewlines)
         let clip = clipURL(for: voice)
         generationTask = Task { [weak self] in
-            await self?.run(script: script, plan: plan, voice: voice, clip: clip, direction: trimmedDirection.isEmpty ? nil : trimmedDirection, quality: quality)
+            await self?.run(script: script, plan: plan, voice: voice, clip: clip)
             self?.generationTask = nil
             self?.progress = nil
             self?.refreshModelState()
@@ -264,14 +243,14 @@ final class AppModel {
         }
     }
 
-    private func run(script: String, plan: GenerationPlan, voice: Voice, clip: URL, direction: String?, quality: ModelQuality) async {
+    private func run(script: String, plan: GenerationPlan, voice: Voice, clip: URL) async {
         let started = Date()
         do {
             progress = GenerationProgress(part: 0, parts: plan.parts.count, secondsLeft: nil, stage: "Getting your voice ready…")
             let reference = try await Task.detached(priority: .userInitiated) {
                 try AudioFileReader.monoSamples(from: clip, sampleRate: VoiceEngine.sampleRate)
             }.value
-            try await prepareModel(quality)
+            try await prepareModel()
             var pieces: [[Float]] = []
             var cutOff: [Int] = []
             let partsStarted = Date()
@@ -282,7 +261,7 @@ final class AppModel {
                     secondsLeft: plan.remainingSeconds(finishedParts: index, elapsed: Date().timeIntervalSince(partsStarted)),
                     stage: plan.parts.count == 1 ? "Speaking…" : "Speaking part \(index + 1) of \(plan.parts.count)…"
                 )
-                let result = try await engine.speak(text: part.text, direction: direction, reference: reference,
+                let result = try await engine.speak(text: part.text, reference: reference,
                                                     referenceText: voice.transcript, seed: plan.seed(forPart: index))
                 pieces.append(result.samples)
                 if GenerationPlan.wasCutOff(steps: result.steps) { cutOff.append(index + 1) }
@@ -295,9 +274,9 @@ final class AppModel {
             try WAVFile.write(samples: samples, sampleRate: VoiceEngine.sampleRate, to: url)
             let item = HistoryItem(
                 date: date, voiceID: voice.id, voiceName: voice.name, script: script.trimmingCharacters(in: .whitespacesAndNewlines),
-                direction: direction, filePath: url.path,
+                direction: nil, filePath: url.path,
                 seconds: AudioTools.duration(sampleCount: samples.count, sampleRate: VoiceEngine.sampleRate),
-                seed: plan.seed, quality: quality, cutOffParts: cutOff, generationSeconds: Date().timeIntervalSince(started)
+                seed: plan.seed, cutOffParts: cutOff, generationSeconds: Date().timeIntervalSince(started)
             )
             library.history.append(item)
             save()
@@ -318,7 +297,7 @@ final class AppModel {
     // MARK: New script
 
     /// What New Script cleared, so its "Undo" can put it back.
-    private var newScriptUndo: (message: String, script: String, direction: String)?
+    private var newScriptUndo: (message: String, script: String)?
 
     /// True while the "New script started." message (with its Undo button) is showing.
     var canUndoNewScript: Bool {
@@ -326,33 +305,31 @@ final class AppModel {
         return undo.message == statusMessage
     }
 
-    /// Clears the script and delivery style for a fresh start. The voice, the latest audio and the
-    /// saved recordings stay as they are.
+    /// Clears the script for a fresh start. The voice, the latest audio and the saved recordings
+    /// stay as they are.
     func newScript() {
         // Nothing to clear: keep the earlier undo copy instead of replacing it with blanks.
-        guard !isGenerating, !(script.isEmpty && direction.isEmpty) else { return }
+        guard !isGenerating, !script.isEmpty else { return }
         let message = "New script started."
-        newScriptUndo = (message: message, script: script, direction: direction)
+        newScriptUndo = (message: message, script: script)
         script = ""
-        direction = ""
         errorMessage = nil
         statusMessage = message
     }
 
-    /// Puts back the script and delivery style that New Script cleared.
+    /// Puts back the script that New Script cleared.
     func undoNewScript() {
         guard let undo = newScriptUndo else { return }
         newScriptUndo = nil
         script = undo.script
-        direction = undo.direction
         statusMessage = "Script restored."
     }
 
     // MARK: The voice model
 
-    private func prepareModel(_ quality: ModelQuality) async throws {
-        if !engine.isDownloaded(quality) { modelState = .downloading(0) } else { modelState = .loading }
-        try await engine.prepare(quality) { [weak self] fraction in
+    private func prepareModel() async throws {
+        if !engine.isDownloaded { modelState = .downloading(0) } else { modelState = .loading }
+        try await engine.prepare { [weak self] fraction in
             guard let self else { return }
             if fraction < 1 {
                 self.modelState = .downloading(fraction)
@@ -363,15 +340,14 @@ final class AppModel {
         modelState = .ready
     }
 
-    /// Downloads the chosen quality ahead of time, so the first recording starts right away.
+    /// Downloads the voice model ahead of time, so the first recording starts right away.
     func downloadModel() {
         guard downloadTask == nil, !isGenerating else { return }
-        let quality = self.quality
         modelState = .downloading(0)
         downloadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                _ = try await self.engine.download(quality) { [weak self] fraction in
+                _ = try await self.engine.download { [weak self] fraction in
                     self?.modelState = .downloading(fraction)
                 }
                 self.statusMessage = "The voice model is downloaded. You're ready to go."
@@ -393,19 +369,18 @@ final class AppModel {
         downloadTask?.cancel()
     }
 
-    func isDownloaded(_ quality: ModelQuality) -> Bool {
-        engine.isDownloaded(quality)
+    var isModelDownloaded: Bool {
+        engine.isDownloaded
     }
 
-    /// Moves a downloaded quality to the Trash to free disk space.
-    func removeModel(_ quality: ModelQuality) {
+    /// Moves the downloaded model to the Trash to free disk space.
+    func removeModel() {
         guard !isGenerating, !isDownloading else { return }
         Task {
-            let loaded = await engine.loadedQuality
-            if loaded == quality { await engine.unload() }
-            try? FileManager.default.trashItem(at: engine.folder(for: quality), resultingItemURL: nil)
+            await engine.unload()
+            try? FileManager.default.trashItem(at: engine.folder, resultingItemURL: nil)
             refreshModelState()
-            statusMessage = "Moved the \(quality.shortTitle) model to the Trash. Empty the Trash to free the disk space."
+            statusMessage = "Moved the voice model to the Trash. Empty the Trash to free the disk space."
         }
     }
 
@@ -434,14 +409,13 @@ final class AppModel {
 
     func refreshModelState() {
         if case .downloading = modelState, downloadTask != nil || isGenerating { return }
-        let quality = self.quality
         Task {
-            let loaded = await engine.loadedQuality
+            let loaded = await engine.isLoaded
             if case .downloading = modelState, downloadTask != nil || isGenerating { return }
-            if loaded == quality {
+            if loaded {
                 modelState = .ready
             } else {
-                modelState = engine.isDownloaded(quality) ? .idle : .notDownloaded
+                modelState = engine.isDownloaded ? .idle : .notDownloaded
             }
         }
     }
@@ -476,7 +450,6 @@ final class AppModel {
 
     func useScript(_ item: HistoryItem) {
         script = item.script
-        direction = item.direction ?? ""
         if library.voice(item.voiceID) != nil { selectedVoiceID = item.voiceID }
         section = .generate
     }

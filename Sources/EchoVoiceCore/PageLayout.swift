@@ -20,7 +20,7 @@ public enum PageLayout {
         max(minimumContentWidth, min(width - 2 * sideMargin, maximumContentWidth))
     }
 
-    /// Width of the voice and delivery column on Generate. It only widens past the standard window.
+    /// Width of the voice column on Generate. It only widens past the standard window.
     public static func sideColumnWidth(forWindow width: Double) -> Double {
         min(widestSideColumn, narrowSideColumn + max(0, width - standardWindowWidth) * sideColumnGrowth)
     }

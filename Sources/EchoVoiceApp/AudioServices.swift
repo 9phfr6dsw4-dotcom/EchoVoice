@@ -142,7 +142,7 @@ final class Playback: NSObject, AVAudioPlayerDelegate {
 }
 
 /// Writes down what's said in a voice clip with Apple's on-device speech recognition, so the
-/// transcript Breeze needs doesn't have to be typed by hand.
+/// transcript Qwen3-TTS needs doesn't have to be typed by hand.
 enum ClipTranscriber {
     enum TranscriberError: LocalizedError {
         case unsupported

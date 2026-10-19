@@ -145,7 +145,7 @@ final class LibraryTests: XCTestCase {
         let voice = UUID()
         func item(_ script: String, _ age: Double, name: String = "Jordan") -> HistoryItem {
             HistoryItem(date: Date(timeIntervalSince1970: 1_000_000 - age), voiceID: voice, voiceName: name, script: script, direction: nil,
-                        filePath: "/tmp/\(script).wav", seconds: 3, seed: 1, quality: .standard, cutOffParts: [], generationSeconds: 5)
+                        filePath: "/tmp/\(script).wav", seconds: 3, seed: 1, cutOffParts: [], generationSeconds: 5)
         }
         let state = LibraryState(history: [item("Weekly update for the team", 50), item("Birthday message", 10), item("Team birthday", 30, name: "Sam")])
         XCTAssertEqual(state.searchHistory("").map(\.script), ["Birthday message", "Team birthday", "Weekly update for the team"])
@@ -190,13 +190,22 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(ScriptStats.wordLabel("  \n "), "")
         XCTAssertEqual(ScriptStats.wordCount("one — two\n\nthree"), 3)
         XCTAssertEqual(ScriptStats.wordCount("你好。我很好！"), 5)
-        XCTAssertEqual(ScriptStats.wordCount("Breeze说你好"), 4)
+        XCTAssertEqual(ScriptStats.wordCount("Echo说你好"), 4)
     }
 
-    func testQualityNames() {
-        XCTAssertEqual(ModelQuality.allCases.map(\.title), ["Balanced (recommended)", "Best quality", "Fastest"])
-        XCTAssertEqual(ModelQuality.standard.shortTitle, "Balanced")
-        XCTAssertEqual(ModelQuality.standard.repository, "mlx-community/Breeze-TTS-2-mlx-8bit")
+    func testVoiceModel() {
+        XCTAssertEqual(VoiceModel.repository, "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit")
+    }
+
+    /// Libraries saved by earlier versions have a "quality" field on each recording; it is ignored.
+    func testLibraryFromBreezeEraStillLoads() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","date":0,"voiceID":"\(UUID().uuidString)","voiceName":"Ada","script":"Hi.",
+         "direction":"calm","filePath":"/tmp/a.wav","seconds":2,"seed":1,"quality":"standard","cutOffParts":[],"generationSeconds":3}
+        """
+        let item = try JSONDecoder().decode(HistoryItem.self, from: Data(json.utf8))
+        XCTAssertEqual(item.direction, "calm")
+        XCTAssertEqual(item.voiceName, "Ada")
     }
 
     func testClockText() {

@@ -7,15 +7,13 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var model = model
         Page(title: "Thoughtful settings", subtitle: "A few details, just the way you like them. Everything stays on your Mac.") {
-            GroupBox("Quality & speed") {
+            GroupBox("Voice model") {
                 VStack(alignment: .leading, spacing: 20) {
-                    ForEach(ModelQuality.allCases) { quality in
-                        qualityRow(quality)
-                    }
+                    modelRow
                     if case .downloading(let fraction) = model.modelState {
                         DownloadProgressRow(fraction: fraction)
                     }
-                    Caption("Applies to your next generation. An option that isn't on this Mac yet is downloaded once. All three use the Breeze TTS 2 voice model.")
+                    Caption("Downloaded once, a few GB. After that EchoVoice works offline.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
@@ -65,7 +63,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Label("No account, no analytics, no tracking.", systemImage: "eye.slash")
                         .fixedSize(horizontal: false, vertical: true)
-                    Caption("EchoVoice runs Breeze TTS 2 by BreezeBlue with Apple's MLX. Breeze TTS 2 is licensed for personal, non-commercial use; its model card has the details.")
+                    Caption("EchoVoice runs Qwen3-TTS by Alibaba's Qwen team with Apple's MLX. Its model card has the license details.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
@@ -82,15 +80,12 @@ struct SettingsView: View {
         }
     }
 
-    private func qualityRow(_ quality: ModelQuality) -> some View {
-        let downloaded = model.isDownloaded(quality)
+    private var modelRow: some View {
+        let downloaded = model.isModelDownloaded
         return HStack(alignment: .top, spacing: 10) {
-            Image(systemName: model.quality == quality ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(model.quality == quality ? Theme.accent : Color.secondary)
-                .font(.title3)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(quality.title)
+                    Text(VoiceModel.title)
                         .font(.system(size: 14, weight: .medium))
                     if downloaded {
                         Text("On this Mac")
@@ -101,18 +96,14 @@ struct SettingsView: View {
                             .foregroundStyle(Theme.success)
                     }
                 }
-                Caption(quality.detail)
+                Caption(VoiceModel.detail)
             }
             Spacer()
-            if model.quality != quality {
-                Button("Use") { model.quality = quality }
-                    .disabled(model.isGenerating || model.isDownloading)
-            } else if !downloaded {
+            if !downloaded {
                 Button("Download") { model.downloadModel() }
                     .disabled(model.isGenerating || model.isDownloading)
-            }
-            if downloaded {
-                Button("Remove") { model.removeModel(quality) }
+            } else {
+                Button("Remove") { model.removeModel() }
                     .disabled(model.isGenerating || model.isDownloading)
                     .help("Move this download to the Trash to free disk space.")
             }
@@ -121,4 +112,3 @@ struct SettingsView: View {
         .contentShape(Rectangle())
     }
 }
-

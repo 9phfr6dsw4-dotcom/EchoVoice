@@ -1,8 +1,7 @@
 import EchoVoiceCore
 import SwiftUI
 
-/// Generate: pick a voice, write or paste a script, optionally describe the delivery, and turn it
-/// into audio.
+/// Generate: pick a voice, write or paste a script, and turn it into audio.
 struct GenerateView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var scriptFocused: Bool
@@ -17,8 +16,6 @@ struct GenerateView: View {
                 HStack(alignment: .top, spacing: 30) {
                     VStack(alignment: .leading, spacing: 26) {
                         voiceRow
-                        Rectangle().fill(Theme.rule).frame(height: 1)
-                        deliveryField
                     }
                     .frame(width: CGFloat(PageLayout.sideColumnWidth(forWindow: Double(windowWidth))), alignment: .topLeading)
                     .padding(.top, 6)
@@ -107,25 +104,6 @@ struct GenerateView: View {
         .shadow(color: Theme.ink.opacity(0.035), radius: 16, y: 5)
     }
 
-    private var deliveryField: some View {
-        @Bindable var model = model
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Delivery style")
-                    .font(.system(size: 12, weight: .medium))
-                Text("Optional")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.muted)
-            }
-            TextField("Delivery style", text: $model.direction, prompt: Text("e.g. calm, upbeat"))
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.large)
-                .disabled(model.isGenerating)
-            Caption("Adding a style takes about twice as long to generate.")
-        }
-    }
-
     private var noVoices: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 10) {
@@ -149,7 +127,7 @@ struct GenerateView: View {
     }
 
     private var canStartNewScript: Bool {
-        !model.isGenerating && !(model.script.isEmpty && model.direction.isEmpty)
+        !model.isGenerating && !model.script.isEmpty
     }
 
     @ViewBuilder
@@ -186,7 +164,7 @@ struct GenerateView: View {
                     scriptFocused = true
                 }
                 .disabled(!canStartNewScript)
-                .help("Clear the script and delivery style. Your voice, audio and recordings stay as they are.")
+                .help("Clear the script. Your voice, audio and recordings stay as they are.")
                 Spacer()
                 Button {
                     model.generate()
@@ -232,7 +210,7 @@ struct ModelBanner: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("One-time download")
                             .font(.headline)
-                        Caption("EchoVoice runs the Breeze TTS 2 voice model on this Mac. It's downloaded once (\(model.quality.shortTitle), a few GB); after that, EchoVoice works offline. It also starts automatically when you first generate audio.")
+                        Caption("EchoVoice runs the Qwen3-TTS voice model on this Mac. It's downloaded once (a few GB); after that, EchoVoice works offline. It also starts automatically when you first generate audio.")
                     }
                     Spacer()
                     Button("Download Now") { model.downloadModel() }

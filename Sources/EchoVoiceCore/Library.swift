@@ -27,18 +27,18 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
     public var voiceID: UUID
     public var voiceName: String
     public var script: String
-    /// The optional delivery direction, such as "warm and slow".
+    /// A delivery direction such as "warm and slow". Only recordings made with the old Breeze model
+    /// have one; Qwen3-TTS has no delivery style, so new recordings leave it empty.
     public var direction: String?
     public var filePath: String
     public var seconds: Double
     public var seed: UInt64
-    public var quality: ModelQuality
     /// Parts (1-based) that reached the model's length limit and may be cut off.
     public var cutOffParts: [Int]
     public var generationSeconds: Double
 
     public init(id: UUID = UUID(), date: Date = Date(), voiceID: UUID, voiceName: String, script: String, direction: String?,
-                filePath: String, seconds: Double, seed: UInt64, quality: ModelQuality, cutOffParts: [Int], generationSeconds: Double) {
+                filePath: String, seconds: Double, seed: UInt64, cutOffParts: [Int], generationSeconds: Double) {
         self.id = id
         self.date = date
         self.voiceID = voiceID
@@ -48,7 +48,6 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
         self.filePath = filePath
         self.seconds = seconds
         self.seed = seed
-        self.quality = quality
         self.cutOffParts = cutOffParts
         self.generationSeconds = generationSeconds
     }
@@ -56,47 +55,11 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
     public var fileName: String { URL(fileURLWithPath: filePath).lastPathComponent }
 }
 
-/// Which download of Breeze TTS 2 to run. All three use the same model; smaller ones are faster.
-public enum ModelQuality: String, Codable, CaseIterable, Identifiable, Sendable {
-    case standard
-    case best
-    case faster
-
-    public var id: String { rawValue }
-
-    public var repository: String {
-        switch self {
-        case .standard: return "mlx-community/Breeze-TTS-2-mlx-8bit"
-        case .best: return "mlx-community/Breeze-TTS-2-mlx"
-        case .faster: return "mlx-community/Breeze-TTS-2-mlx-4bit"
-        }
-    }
-
-    /// The name shown in Settings ("Quality & speed").
-    public var title: String {
-        switch self {
-        case .standard: return "Balanced (recommended)"
-        case .best: return "Best quality"
-        case .faster: return "Fastest"
-        }
-    }
-
-    /// The name without "(recommended)", for use inside sentences.
-    public var shortTitle: String {
-        switch self {
-        case .standard: return "Balanced"
-        case .best: return "Best quality"
-        case .faster: return "Fastest"
-        }
-    }
-
-    public var detail: String {
-        switch self {
-        case .standard: return "8-bit model. Sounds like Best quality to most ears at about twice the speed. Uses about 4 GB of memory while loaded."
-        case .best: return "The full model (bf16). The slowest option, using about 7 GB of memory while loaded."
-        case .faster: return "4-bit model. The quickest and smallest; you may hear a small drop in quality. Uses about 3 GB of memory."
-        }
-    }
+/// The one voice model EchoVoice runs: Qwen3-TTS 1.7B Base, 8-bit, on MLX.
+public enum VoiceModel {
+    public static let repository = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit"
+    public static let title = "Qwen3-TTS 1.7B (8-bit)"
+    public static let detail = "Alibaba's Qwen3-TTS Base model, compressed to 8 bits so it runs comfortably on a Mac. It copies a voice from a short clip."
 }
 
 public enum VoiceRules {
