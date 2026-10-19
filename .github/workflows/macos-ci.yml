@@ -38,12 +38,27 @@ jobs:
             -scheme EchoVoice-Package \
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath .xcbuild \
+            -resultBundlePath .xcbuild/EchoVoice-tests.xcresult \
             -skipMacroValidation \
             -skipPackagePluginValidation \
             -only-testing:EchoVoiceTests \
             -only-testing:EchoVoiceModelTests \
             CODE_SIGNING_ALLOWED=NO \
             -quiet
+      - name: Explain test failures
+        if: failure()
+        run: |
+          if [ -d .xcbuild/EchoVoice-tests.xcresult ]; then
+            xcrun xcresulttool get test-results summary --path .xcbuild/EchoVoice-tests.xcresult --format json
+          fi
+      - name: Upload failing test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: EchoVoice-test-diagnostics
+          path: .xcbuild/EchoVoice-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Build, package, and verify app bundle and ZIP
         run: bash Scripts/package-app.sh
       - name: Launch app smoke test
