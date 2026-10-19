@@ -5,7 +5,7 @@ import MLX
 import MLXAudioCore
 import MLXAudioTTS
 
-/// Runs Breeze TTS 2 on this Mac. The model is downloaded once, loaded when needed, and released
+/// Runs Qwen3-TTS on this Mac. The model is downloaded once, loaded when needed, and released
 /// to free memory when EchoVoice has been idle for a while. One recording part at a time.
 actor VoiceEngine {
     enum EngineError: LocalizedError {
@@ -28,27 +28,33 @@ actor VoiceEngine {
     }
 
     let modelsFolder: URL
-    private var model: BreezeTTSModel?
-    private(set) var loadedQuality: ModelQuality?
+    private var model: Qwen3TTSModel?
 
     init(modelsFolder: URL) {
         self.modelsFolder = modelsFolder
     }
 
-    /// Breeze speaks at 24 kHz.
+    /// Qwen3-TTS speaks at 24 kHz.
     static let sampleRate = 24_000
 
-    /// Where a quality's files live once downloaded (the layout mlx-audio uses).
-    nonisolated func folder(for quality: ModelQuality) -> URL {
+    /// Where the model's files live once downloaded (the layout mlx-audio uses).
+    nonisolated var folder: URL {
         modelsFolder
             .appendingPathComponent("mlx-audio")
-            .appendingPathComponent(quality.repository.replacingOccurrences(of: "/", with: "_"))
+            .appendingPathComponent(VoiceModel.repository.replacingOccurrences(of: "/", with: "_"))
     }
 
-    nonisolated func isDownloaded(_ quality: ModelQuality) -> Bool {
-        let folder = folder(for: quality)
-        guard FileManager.default.fileExists(atPath: folder.appendingPathComponent("config.json").path),
-              let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey]) else {
+    /// The model is complete when both the main weights and the speech tokenizer's weights are
+    /// there; a download stopped half way can leave only the first.
+    nonisolated var isDownloaded: Bool {
+        let modelFolder = folder
+        return FileManager.default.fileExists(atPath: modelFolder.appendingPathComponent("config.json").path)
+            && Self.hasWeights(in: modelFolder)
+            && Self.hasWeights(in: modelFolder.appendingPathComponent("speech_tokenizer", isDirectory: true))
+    }
+
+    private nonisolated static func hasWeights(in folder: URL) -> Bool {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey]) else {
             return false
         }
         return files.contains { file in
@@ -56,9 +62,9 @@ actor VoiceEngine {
         }
     }
 
-    /// Downloads a quality if it isn't on this Mac yet. `progress` gets 0…1.
-    func download(_ quality: ModelQuality, progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> URL {
-        guard let repoID = Repo.ID(rawValue: quality.repository) else { throw EngineError.badRepository(quality.repository) }
+    /// Downloads the model if it isn't on this Mac yet. `progress` gets 0…1.
+    func download(progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> URL {
+        guard let repoID = Repo.ID(rawValue: VoiceModel.repository) else { throw EngineError.badRepository(VoiceModel.repository) }
         try FileManager.default.createDirectory(at: modelsFolder, withIntermediateDirectories: true)
         let cache = HubCache(cacheDirectory: modelsFolder)
         // No second copy in a shared cache: the files are kept only in EchoVoice's own folder.
@@ -74,40 +80,39 @@ actor VoiceEngine {
         } catch let error as HubCacheError {
             // Without a shared cache, swift-huggingface 0.12 writes every file into EchoVoice's
             // folder and then reports that no cache was configured. The download is complete.
-            guard case .snapshotRequiresCacheOrDestination(_) = error, isDownloaded(quality) else { throw error }
-            return folder(for: quality)
+            guard case .snapshotRequiresCacheOrDestination(_) = error, isDownloaded else { throw error }
+            return folder
         }
     }
 
-    /// Makes sure the chosen quality is downloaded and loaded.
-    func prepare(_ quality: ModelQuality, progress: @escaping @MainActor @Sendable (Double) -> Void) async throws {
-        if model != nil, loadedQuality == quality { return }
-        unload()
-        let folder = try await download(quality, progress: progress)
+    /// Makes sure the model is downloaded and loaded.
+    func prepare(progress: @escaping @MainActor @Sendable (Double) -> Void) async throws {
+        if model != nil { return }
+        let folder = try await download(progress: progress)
         try Task.checkCancellation()
-        model = try await BreezeTTSModel.fromModelDirectory(folder)
-        loadedQuality = quality
+        model = try await Qwen3TTSModel.fromModelDirectory(folder)
     }
 
     var isLoaded: Bool { model != nil }
 
-    /// Speaks one part of a script in the reference voice. `direction` is the optional delivery
-    /// instruction ("warm and slow").
-    func speak(text: String, direction: String?, reference: [Float], referenceText: String, seed: UInt64) async throws -> PartResult {
+    /// Speaks one part of a script in the reference voice.
+    func speak(text: String, reference: [Float], referenceText: String, seed: UInt64) async throws -> PartResult {
         guard let model else { throw EngineError.notLoaded }
         MLXRandom.seed(seed)
         Memory.cacheLimit = 512 * 1024 * 1024
         defer { Memory.clearCache() }
-        let instruction = direction.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        var parameters = model.defaultGenerationParameters
+        parameters.maxTokens = GenerationPlan.maxStepsPerPart
         var samples: [Float] = []
         var steps = 0
+        // `voice` stays nil: when a reference clip is given, Qwen3-TTS Base takes no style instruction.
         let stream = model.generateStream(
             text: text,
-            voice: instruction,
+            voice: nil,
             refAudio: MLXArray(reference),
             refText: referenceText,
             language: "English",
-            generationParameters: model.defaultGenerationParameters
+            generationParameters: parameters
         )
         for try await event in stream {
             try Task.checkCancellation()
@@ -129,7 +134,6 @@ actor VoiceEngine {
     /// Releases the model and its memory. It loads again on the next recording.
     func unload() {
         model = nil
-        loadedQuality = nil
         Memory.clearCache()
     }
 }

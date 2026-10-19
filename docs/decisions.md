@@ -3,34 +3,35 @@
 ## Native and local
 
 - A native SwiftUI app for macOS 26 on Apple Silicon. No Terminal, no local web server, no Python.
-- Speech is made by Breeze TTS 2 through mlx-audio-swift on MLX. Its MLX checkpoints (8-bit by default; full precision and 4-bit as options) are downloaded once from Hugging Face into `~/Library/Application Support/EchoVoice/Models`, without a second copy in a shared cache. After that EchoVoice works offline.
+- Speech is made by Qwen3-TTS 1.7B Base (8-bit, `mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit`) through mlx-audio-swift on MLX. It is the only model: there is no quality picker. It is downloaded once from Hugging Face into `~/Library/Application Support/EchoVoice/Models`, without a second copy in a shared cache. After that EchoVoice works offline.
 - Voices, scripts, the Recordings list and audio files never leave the Mac. No accounts, analytics or uploads.
 - The model is loaded on demand and released after a configurable idle time (default 10 minutes), so it doesn't hold memory between uses.
 
 ## Voices
 
-- A voice is one clip plus its exact transcript, which Breeze needs for cloning. Clips are converted to mono 24 kHz, silence is trimmed, quiet clips are raised, and clips must be 3 to 60 seconds of speech (8 to 25 recommended). Silent clips are refused; distorted or long clips get a note.
+- A voice is one clip plus its exact transcript, which Qwen3-TTS needs for cloning. Clips are converted to mono 24 kHz, silence is trimmed, quiet clips are raised, and clips must be 3 to 60 seconds of speech (8 to 25 recommended). Silent clips are refused; distorted or long clips get a note.
 - Transcripts are written by Apple's on-device speech recognition (SpeechTranscriber) and always shown for checking before saving.
 - Deleting a voice moves its clip to the Trash. Recordings made with it are kept.
 
 ## Generating audio
 
-- Scripts of any length (up to 50,000 characters) are split at sentence boundaries into parts of about 400 characters, far below the model's 750-step limit per pass (about a minute of speech). Long sentences break at commas, then spaces. A part that still reaches the limit is reported as possibly cut off.
+- Scripts of any length (up to 50,000 characters) are split at sentence boundaries into parts of about 400 characters, far below the 750-step limit per pass we set (12.5 steps per second, about a minute of speech). Long sentences break at commas, then spaces. A part that still reaches the limit is reported as possibly cut off.
 - Each part's seed is derived from the recording's seed, so Same Take repeats a recording and New Take varies it.
-- The script stays in place after generating, so it can be tweaked and generated again. **New Script** clears the script and delivery style (keeping the voice, the last audio and the Recordings list) and offers Undo, which restores both fields.
+- The script stays in place after generating, so it can be tweaked and generated again. **New Script** clears the script (keeping the voice, the last audio and the Recordings list) and offers Undo, which restores it.
 - Parts are joined with 0.25 s pauses between sentences and 0.6 s between paragraphs, and saved as 16-bit WAV through a temporary file, so a half-written file is never left behind.
 
 ## Wording
 
 - The pages are Generate, Voices, Recordings and Settings. Buttons say exactly what they do: Generate Audio, New Script, Use voice.
 - Privacy is stated once in full in Settings; other pages show a short “Processed on your Mac” note.
-- Qualities are named for what you get: Balanced (recommended, 8-bit), Best quality (full precision) and Fastest (4-bit). The saved setting keeps its old internal values, so existing settings carry over.
+- There is no delivery style: Qwen3-TTS Base ignores style instructions when it clones a voice from a clip. Recordings made with the old Breeze model keep their saved style text, shown in Recordings; the old per-recording `quality` field is ignored when a library loads.
+- Breeze model files from earlier versions are not deleted; they can be removed from `~/Library/Application Support/EchoVoice/Models/mlx-audio`.
 
 ## Pearl Editorial design
 
 - A deliberate light palette of warm ivory, deep teal, and ink, with Baskerville for headings and scripts and system text for controls.
 - Top navigation keeps the original four destinations and keyboard shortcuts. The content column follows the window width up to a reading limit of 1680 points, and the Generate page grows to the height of the window: the script editor takes the spare room, and the voice column widens a little. At the standard window size nothing changes; below the minimum height the page scrolls. The pure sizing rules live in `PageLayout` and are unit-tested.
-- The voice picker and free-form delivery field sit beside the script. Playback, regeneration, drag-out, deletion, and New Script with Undo keep their original behavior. No saved-data schema or preference keys change.
+- The voice picker sits beside the script. Playback, regeneration, drag-out, deletion, and New Script with Undo keep their original behavior.
 - CI captures the actual packaged SwiftUI screens at 1180×840, 900×620 and 2560×1440 (a full-screen stand-in) with temporary fictional fixtures, and fails if the script editor does not grow at the large size. Its capture entry point requires GitHub Actions; it does not access the normal library or download the voice model.
 
 ## App icon

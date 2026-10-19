@@ -163,7 +163,7 @@ struct AddVoiceSheet: View {
                     .padding(6)
                     .background(Theme.paper, in: RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.rule))
-                Caption("Breeze copies a voice best when these words match the clip exactly. Listen once and fix anything that's off.")
+                Caption("Qwen3-TTS copies a voice best when these words match the clip exactly. Listen once and fix anything that's off.")
             }
             TextField("Name", text: $name, prompt: Text("e.g. Ada, or Ada – calm"))
                 .textFieldStyle(.roundedBorder)
@@ -398,7 +398,7 @@ struct ClipTips: View {
             Label("One person speaking naturally, in a quiet room with no music.", systemImage: "person")
             Label("8 to 25 seconds is ideal; anything from 3 to 60 seconds works.", systemImage: "timer")
             Label("The words below must match the clip exactly. EchoVoice writes them down; check them before saving.", systemImage: "text.quote")
-            Label("Breeze TTS 2 speaks English and Chinese.", systemImage: "globe")
+            Label("Qwen3-TTS copies a voice in English, Chinese, Japanese, Korean, German, French, Russian, Portuguese, Spanish and Italian. EchoVoice reads scripts as English for now.", systemImage: "globe")
         }
         .font(.callout)
         .foregroundStyle(.secondary)

@@ -2,7 +2,7 @@ import Foundation
 
 /// How one recording is made: the parts of the script, the seed, and progress along the way.
 public struct GenerationPlan: Equatable, Sendable {
-    /// The model's per-pass limit, in audio steps (about 12 per second of speech).
+    /// The model's per-pass limit, in audio steps (12.5 per second of speech, so about a minute).
     public static let maxStepsPerPart = 750
     public static let maximumScriptCharacters = 50_000
 

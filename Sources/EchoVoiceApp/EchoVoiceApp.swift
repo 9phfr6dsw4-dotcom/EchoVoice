@@ -44,7 +44,7 @@ struct EchoVoiceApp: App {
                     model.section = .generate
                     model.newScript()
                 }
-                .disabled(model.isGenerating || (model.script.isEmpty && model.direction.isEmpty))
+                .disabled(model.isGenerating || model.script.isEmpty)
             }
             CommandMenu("Go") {
                 ForEach(AppSection.allCases) { section in
