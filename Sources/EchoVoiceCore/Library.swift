@@ -27,8 +27,7 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
     public var voiceID: UUID
     public var voiceName: String
     public var script: String
-    /// A delivery direction such as "warm and slow". Only recordings made with the old Breeze model
-    /// have one; Qwen3-TTS has no delivery style, so new recordings leave it empty.
+    /// A delivery direction saved by earlier Breeze versions. Kept for library compatibility.
     public var direction: String?
     public var filePath: String
     public var seconds: Double
@@ -58,37 +57,42 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
     public var fileName: String { URL(fileURLWithPath: filePath).lastPathComponent }
 }
 
-/// Both engines use the same saved 24 kHz reference clips and produce 24 kHz audio.
+/// Breeze is the only available engine. Retired cases keep saved recordings readable.
 public enum VoiceModel: String, Codable, CaseIterable, Identifiable, Sendable {
-    case qwen, chatterbox
+    case breeze, qwen, chatterbox
+
+    public static let allCases: [VoiceModel] = [.breeze]
 
     public var id: String { rawValue }
     public var repository: String {
         switch self {
+        case .breeze: return "mlx-community/Breeze-TTS-2-mlx-8bit"
         case .qwen: return "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit"
         case .chatterbox: return "mlx-community/chatterbox-turbo-fp16"
         }
     }
     public var title: String {
         switch self {
+        case .breeze: return "Breeze TTS 2 (8-bit)"
         case .qwen: return "Qwen3-TTS 1.7B (8-bit)"
         case .chatterbox: return "Chatterbox Turbo"
         }
     }
     public var detail: String {
         switch self {
+        case .breeze: return "Copies your voice from a clip and its exact words. Runs offline after download. Personal, non-commercial use only."
         case .qwen: return "Copies your voice from a clip and its exact words. English speech, with corrected voice-reference processing."
         case .chatterbox: return "An English voice-cloning model from Resemble AI. Uses your saved clip without needing its transcript."
         }
     }
-    public var requiresTranscript: Bool { self == .qwen }
-    /// Approximately one minute at 12.5 Qwen steps/s or 25 Chatterbox steps/s.
-    public var maxStepsPerPart: Int { self == .qwen ? 750 : 1500 }
+    public var requiresTranscript: Bool { self != .chatterbox }
+    public var maxStepsPerPart: Int { self == .chatterbox ? 1500 : 750 }
     public var repositories: [String] {
-        self == .qwen ? [repository] : [repository, "mlx-community/S3TokenizerV2"]
+        self == .chatterbox ? [repository, "mlx-community/S3TokenizerV2"] : [repository]
     }
     public static func restored(_ rawValue: String?) -> VoiceModel {
-        rawValue.flatMap(Self.init(rawValue:)) ?? .qwen
+        // Previous engine preferences migrate to Breeze; history retains its original model.
+        .breeze
     }
 }
 

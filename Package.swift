@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "EchoVoiceApp", targets: ["EchoVoiceApp"])
     ],
     dependencies: [
-        // Runs both engines. Scripts/prepare-models.sh applies checked fixes to this exact revision.
+        // Runs Breeze TTS 2. Scripts/prepare-models.sh applies checked fixes to this exact revision.
         .package(url: "https://github.com/Blaizzy/mlx-audio-swift.git", revision: "244458d7b61e54ff135073ddc9ed76782bb20758"),
         .package(url: "https://github.com/ml-explore/mlx-swift.git", exact: "0.32.3"),
         .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.12.0"),

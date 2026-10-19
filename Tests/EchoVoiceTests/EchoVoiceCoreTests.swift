@@ -194,7 +194,8 @@ final class LibraryTests: XCTestCase {
     }
 
     func testVoiceModel() {
-        XCTAssertEqual(VoiceModel.qwen.repository, "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit")
+        XCTAssertEqual(VoiceModel.allCases, [.breeze])
+        XCTAssertEqual(VoiceModel.breeze.repository, "mlx-community/Breeze-TTS-2-mlx-8bit")
     }
 
     /// Libraries saved by earlier versions have a "quality" field on each recording; it is ignored.
@@ -210,10 +211,11 @@ final class LibraryTests: XCTestCase {
     }
 
     func testSavedModelRoundTripAndLegacySelection() throws {
-        XCTAssertEqual(VoiceModel.restored(nil), .qwen)
-        XCTAssertEqual(VoiceModel.restored("invalid"), .qwen)
-        XCTAssertEqual(VoiceModel.restored("chatterbox"), .chatterbox)
-        for selected in VoiceModel.allCases {
+        XCTAssertEqual(VoiceModel.restored(nil), .breeze)
+        XCTAssertEqual(VoiceModel.restored("invalid"), .breeze)
+        XCTAssertEqual(VoiceModel.restored("chatterbox"), .breeze)
+        XCTAssertEqual(VoiceModel.restored("qwen"), .breeze)
+        for selected in [VoiceModel.breeze, .qwen, .chatterbox] {
             let item = HistoryItem(date: Date(timeIntervalSince1970: 0), voiceID: UUID(), voiceName: "Ada", script: "Hello.", direction: nil,
                 filePath: "/tmp/test.wav", seconds: 2, seed: 42, cutOffParts: [], generationSeconds: 3,
                 model: selected)
@@ -222,9 +224,26 @@ final class LibraryTests: XCTestCase {
         }
     }
 
-    func testChatterboxTranscriptIsOptionalButQwenStillRequiresIt() throws {
+    func testRetiredModelLibrariesKeepVoicesAndAudioPaths() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LibraryStore(fileURL: directory.appendingPathComponent("library.json"))
+        // The library's ISO 8601 format stores whole seconds. Use a representable fixture date
+        // so this test checks voice/history preservation rather than subsecond clock precision.
+        let voice = Voice(name: "Ada", transcript: "", seconds: 10, created: Date(timeIntervalSince1970: 0))
+        let history = [VoiceModel.qwen, .chatterbox].map { selected in
+            HistoryItem(date: Date(timeIntervalSince1970: 0), voiceID: voice.id, voiceName: voice.name,
+                script: "Hello.", direction: nil, filePath: "/tmp/\(selected.rawValue).wav", seconds: 2,
+                seed: 42, cutOffParts: [], generationSeconds: 3, model: selected)
+        }
+        let original = LibraryState(voices: [voice], history: history)
+        try store.save(original)
+        XCTAssertEqual(store.load(), original)
+    }
+
+    func testBreezeRequiresTranscriptForPreviouslyOptionalClips() throws {
         XCTAssertEqual(try VoiceRules.transcript("  ", required: VoiceModel.chatterbox.requiresTranscript), "")
-        XCTAssertThrowsError(try VoiceRules.transcript("  ", required: VoiceModel.qwen.requiresTranscript))
+        XCTAssertThrowsError(try VoiceRules.transcript("  ", required: VoiceModel.breeze.requiresTranscript))
     }
 
     func testClockText() {

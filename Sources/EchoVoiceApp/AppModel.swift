@@ -78,7 +78,7 @@ final class AppModel {
     var selectedModel: VoiceModel {
         get { storedModel }
         set {
-            guard !isModelBusy, newValue != storedModel else { return }
+            guard !isModelBusy, VoiceModel.allCases.contains(newValue), newValue != storedModel else { return }
             storedModel = newValue
             defaults.set(newValue.rawValue, forKey: Keys.model)
             modelState = engine.isDownloaded(newValue) ? .idle : .notDownloaded
@@ -218,7 +218,7 @@ final class AppModel {
     }
 
     /// Generates a recording again from Recordings: the same take (same seed) or a new one. A recording
-    /// made with the old Breeze model comes out differently, because the voice model is different.
+    /// made with a retired engine uses Breeze, so the new audio will sound different.
     func regenerate(_ item: HistoryItem, sameTake: Bool) {
         guard let voice = library.voice(item.voiceID) else {
             errorMessage = "The voice “\(item.voiceName)” was deleted, so this audio can't be generated again."
@@ -226,12 +226,15 @@ final class AppModel {
         }
         guard !isModelBusy else { return }
         // This take starts immediately; prepare() unloads the previous engine serially.
-        storedModel = item.model ?? .qwen
+        storedModel = .breeze
         defaults.set(storedModel.rawValue, forKey: Keys.model)
         script = item.script
         selectedVoiceID = voice.id
         section = .generate
         start(script: item.script, voice: voice, seed: sameTake ? item.seed : UInt64.random(in: 0 ... UInt64.max))
+        if let previous = item.model, previous != .breeze {
+            statusMessage = "This recording used \(previous.title). The new take uses Breeze and will sound different."
+        }
     }
 
     func stop() {
@@ -245,7 +248,7 @@ final class AppModel {
             return
         }
         if selectedModel.requiresTranscript && voice.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Qwen needs the exact words spoken in this voice clip. Add them in Voices, or choose Chatterbox Turbo."
+            errorMessage = "Breeze needs the exact words spoken in this voice clip. Add them in Voices, then generate again."
             return
         }
         let generationModel = selectedModel
