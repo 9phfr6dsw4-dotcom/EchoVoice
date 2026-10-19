@@ -57,15 +57,9 @@ struct GenerateView: View {
             .frame(maxWidth: .infinity)
             .disabled(model.isModelBusy)
             Divider()
-            Picker("Model", selection: $model.selectedModel) {
-                ForEach(VoiceModel.allCases) { selected in
-                    Text(selected.title).tag(selected)
-                }
-            }
-            .disabled(model.isModelBusy)
-            Caption(model.selectedModel.requiresTranscript
-                ? "Uses your clip and its exact words."
-                : "Uses your clip. More than 5 seconds of speech works best.")
+            Text(VoiceModel.breeze.title)
+                .font(.callout.weight(.medium))
+            Caption("Uses your clip and its exact words.")
         }
     }
 

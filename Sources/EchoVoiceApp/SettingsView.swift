@@ -1,3 +1,4 @@
+import AppKit
 import EchoVoiceCore
 import SwiftUI
 
@@ -10,13 +11,11 @@ struct SettingsView: View {
         Page(title: "Thoughtful settings", subtitle: "A few details, just the way you like them. Everything stays on your Mac.") {
             GroupBox("Voice model") {
                 VStack(alignment: .leading, spacing: 20) {
-                    Picker("Model", selection: $model.selectedModel) {
-                        ForEach(VoiceModel.allCases) { selected in
-                            Text(selected.title).tag(selected)
-                        }
-                    }
-                    .disabled(model.isModelBusy)
                     modelRow
+                    Button("Open Model Downloads in Finder") {
+                        NSWorkspace.shared.open(model.engine.modelsFolder.appendingPathComponent("mlx-audio"))
+                    }
+                    Caption("To reclaim space from previous versions, quit EchoVoice and move the Qwen3-TTS, chatterbox-turbo and S3TokenizerV2 folders to the Trash. Keep the Breeze folder. Empty the Trash to free the space.")
                     if case .downloading(let fraction) = model.modelState {
                         DownloadProgressRow(fraction: fraction)
                     }
@@ -95,7 +94,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Label("No account, no analytics, no tracking.", systemImage: "eye.slash")
                         .fixedSize(horizontal: false, vertical: true)
-                    Caption("Qwen3-TTS (Apache 2.0) and Chatterbox Turbo (MIT) run with Apple's MLX. Both permit commercial use under their license terms.")
+                    Caption("Breeze TTS 2 runs with Apple's MLX. Its model weights are for personal, non-commercial use only.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)

@@ -5,26 +5,23 @@ import MLX
 import MLXAudioCore
 import MLXAudioTTS
 
-/// Serializes generation and keeps only one model loaded at a time.
+/// Runs Breeze TTS 2, one recording part at a time.
 actor VoiceEngine {
     enum EngineError: LocalizedError {
-        case notLoaded, incompleteDownload, emptyAudio, invalidReference
+        case notLoaded, incompleteDownload, emptyAudio
         var errorDescription: String? {
             switch self {
             case .notLoaded: return "The voice model isn't loaded yet."
             case .incompleteDownload: return "The model download is incomplete. Download it again in Settings."
             case .emptyAudio: return "The voice model returned no audio. Try a different take."
-            case .invalidReference: return "Chatterbox Turbo needs more than 5 seconds of speech. Use a longer saved clip, or choose Qwen."
             }
         }
     }
     struct PartResult: Sendable { let samples: [Float]; let steps: Int }
     nonisolated let modelsFolder: URL
-    private var qwen: Qwen3TTSModel?
-    private var chatterbox: ChatterboxModel?
-    private var loadedModel: VoiceModel?
+    private var model: BreezeTTSModel?
     private var reference: MLXArray?
-    private var conditioning: Qwen3TTSModel.Qwen3TTSReferenceConditioning?
+    private var referenceText = ""
     static let sampleRate = 24_000
 
     init(modelsFolder: URL) { self.modelsFolder = modelsFolder }
@@ -47,19 +44,13 @@ actor VoiceEngine {
               hasFile("tokenizer_config.json", in: directory),
               hasFile("tokenizer.json", in: directory) ||
                 (hasFile("vocab.json", in: directory) && hasFile("merges.txt", in: directory)) else { return false }
-        switch selected {
-        case .qwen:
-            return hasWeights(in: directory.appendingPathComponent("speech_tokenizer"))
-                && hasFile("config.json", in: directory.appendingPathComponent("speech_tokenizer"))
-        case .chatterbox:
-            // conds.safetensors alone is a default voice, not the speech model.
-            return hasFile("model.safetensors", in: directory)
-                && hasWeights(in: folder(for: "mlx-community/S3TokenizerV2"))
-        }
+        let tokenizer = directory.appendingPathComponent("audio_tokenizer")
+        return selected == .breeze && hasWeights(in: tokenizer) && hasFile("config.json", in: tokenizer)
     }
 
     /// Always snapshots all files, including subfolder weights. Resumes partial downloads.
     func download(_ selected: VoiceModel, progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> URL {
+        guard selected == .breeze else { throw EngineError.notLoaded }
         if isDownloaded(selected) { return folder(for: selected.repository) }
         let client = HubClient(cache: nil)
         for (index, repository) in selected.repositories.enumerated() {
@@ -86,47 +77,30 @@ actor VoiceEngine {
     }
 
     func prepare(_ selected: VoiceModel, progress: @escaping @MainActor @Sendable (Double) -> Void) async throws {
-        if loadedModel == selected { return }
+        guard selected == .breeze else { throw EngineError.notLoaded }
+        if model != nil { return }
         unload()
         let directory = try await download(selected, progress: progress)
         try Task.checkCancellation()
-        switch selected {
-        case .qwen: qwen = try await Qwen3TTSModel.fromModelDirectory(directory)
-        case .chatterbox:
-            chatterbox = try await ChatterboxModel.fromModelDirectory(
-                directory, hfToken: nil, s3TokenizerDirectory: folder(for: "mlx-community/S3TokenizerV2"))
-        }
-        loadedModel = selected
+        model = try await BreezeTTSModel.fromModelDirectory(directory)
     }
-    func isLoaded(_ selected: VoiceModel) -> Bool { loadedModel == selected }
+    func isLoaded(_ selected: VoiceModel) -> Bool { selected == .breeze && model != nil }
 
-    /// Freeze conditioning once for each recording, and keep its original array alive.
     func setReference(_ samples: [Float], transcript: String) throws {
-        guard let selected = loadedModel else { throw EngineError.notLoaded }
-        if selected == .chatterbox && samples.count <= Self.sampleRate * 5 { throw EngineError.invalidReference }
+        guard model != nil else { throw EngineError.notLoaded }
         reference = MLXArray(samples)
-        conditioning = nil
-        if let qwen, let reference {
-            conditioning = try qwen.prepareReferenceConditioning(refAudio: reference, refText: transcript, language: "English")
-        }
+        referenceText = transcript
     }
 
     func speak(text: String, seed: UInt64) async throws -> PartResult {
-        guard let selected = loadedModel, let reference else { throw EngineError.notLoaded }
+        guard let model, let reference else { throw EngineError.notLoaded }
         MLXRandom.seed(seed)
         Memory.cacheLimit = 512 * 1024 * 1024
         defer { Memory.clearCache() }
-        let stream: AsyncThrowingStream<AudioGeneration, Error>
-        if let qwen, let conditioning {
-            var parameters = qwen.defaultGenerationParameters
-            parameters.maxTokens = selected.maxStepsPerPart
-            stream = qwen.generateStream(text: text, conditioning: conditioning, generationParameters: parameters)
-        } else if let chatterbox {
-            var parameters = chatterbox.defaultGenerationParameters
-            parameters.maxTokens = selected.maxStepsPerPart
-            stream = chatterbox.generateStream(text: text, voice: nil, refAudio: reference,
-                refText: nil, language: "English", generationParameters: parameters)
-        } else { throw EngineError.notLoaded }
+        var parameters = model.defaultGenerationParameters
+        parameters.maxTokens = VoiceModel.breeze.maxStepsPerPart
+        let stream = model.generateStream(text: text, voice: nil, refAudio: reference,
+            refText: referenceText, language: "English", generationParameters: parameters)
         var samples: [Float] = []
         var steps = 0
         for try await event in stream {
@@ -142,7 +116,7 @@ actor VoiceEngine {
         return PartResult(samples: samples, steps: steps)
     }
     func unload() {
-        reference = nil; conditioning = nil; qwen = nil; chatterbox = nil; loadedModel = nil
+        reference = nil; referenceText = ""; model = nil
         Memory.clearCache()
     }
 }
