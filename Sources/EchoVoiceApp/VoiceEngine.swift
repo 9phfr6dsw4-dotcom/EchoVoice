@@ -103,7 +103,7 @@ actor VoiceEngine {
     /// Freeze conditioning once for each recording, and keep its original array alive.
     func setReference(_ samples: [Float], transcript: String) throws {
         guard let selected = loadedModel else { throw EngineError.notLoaded }
-        if selected == .chatterbox && samples.count <= sampleRate * 5 { throw EngineError.invalidReference }
+        if selected == .chatterbox && samples.count <= Self.sampleRate * 5 { throw EngineError.invalidReference }
         reference = MLXArray(samples)
         conditioning = nil
         if let qwen, let reference {
