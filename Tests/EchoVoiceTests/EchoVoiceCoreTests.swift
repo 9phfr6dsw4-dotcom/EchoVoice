@@ -228,7 +228,9 @@ final class LibraryTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = LibraryStore(fileURL: directory.appendingPathComponent("library.json"))
-        let voice = Voice(name: "Ada", transcript: "", seconds: 10)
+        // The library's ISO 8601 format stores whole seconds. Use a representable fixture date
+        // so this test checks voice/history preservation rather than subsecond clock precision.
+        let voice = Voice(name: "Ada", transcript: "", seconds: 10, created: Date(timeIntervalSince1970: 0))
         let history = [VoiceModel.qwen, .chatterbox].map { selected in
             HistoryItem(date: Date(timeIntervalSince1970: 0), voiceID: voice.id, voiceName: voice.name,
                 script: "Hello.", direction: nil, filePath: "/tmp/\(selected.rawValue).wav", seconds: 2,
