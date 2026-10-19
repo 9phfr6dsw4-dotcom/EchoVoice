@@ -55,7 +55,17 @@ struct GenerateView: View {
             }
             .labelsHidden()
             .frame(maxWidth: .infinity)
-            .disabled(model.isGenerating)
+            .disabled(model.isModelBusy)
+            Divider()
+            Picker("Model", selection: $model.selectedModel) {
+                ForEach(VoiceModel.allCases) { selected in
+                    Text(selected.title).tag(selected)
+                }
+            }
+            .disabled(model.isModelBusy)
+            Caption(model.selectedModel.requiresTranscript
+                ? "Uses your clip and its exact words."
+                : "Uses your clip. More than 5 seconds of speech works best.")
         }
     }
 
@@ -175,7 +185,7 @@ struct GenerateView: View {
                 .buttonStyle(PearlPrimaryButtonStyle())
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(model.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.selectedVoice == nil || model.isDownloading)
+                .disabled(model.script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.selectedVoice == nil || model.isDownloading || model.isManagingModel)
                 .help("Generate Audio (⌘↩)")
                 if model.isDownloading {
                     Caption("Available when the download finishes.")
@@ -210,7 +220,7 @@ struct ModelBanner: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("One-time download")
                             .font(.headline)
-                        Caption("EchoVoice runs the Qwen3-TTS voice model on this Mac. It's downloaded once (a few GB); after that, EchoVoice works offline. It also starts automatically when you first generate audio.")
+                        Caption("\(model.selectedModel.title) runs on this Mac. Download it once, then work offline. The download also starts automatically when you first generate audio.")
                     }
                     Spacer()
                     Button("Download Now") { model.downloadModel() }

@@ -67,6 +67,7 @@ struct RecordingRow: View {
 
     private var metadata: String {
         var parts = [item.voiceName, TimeText.clock(item.seconds), DateText.medium(item.date)]
+        if let selected = item.model { parts.append(selected.title) }
         if let direction = item.direction { parts.append("“\(direction)”") }
         return parts.joined(separator: " · ")
     }
@@ -123,7 +124,7 @@ struct RecordingRow: View {
                 .accessibilityLabel("Move this recording to the Trash")
             }
             .controlSize(.small)
-            .disabled(model.isGenerating)
+            .disabled(model.isModelBusy)
         }
         .modifier(PearlPanel())
         .draggable(url)

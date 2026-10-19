@@ -27,19 +27,38 @@ jobs:
           test "${sdk_version%%.*}" -ge 26
       - name: Install the Metal toolchain (MLX's GPU code needs it)
         run: xcodebuild -downloadComponent MetalToolchain
-      - name: Show build schemes
-        run: xcodebuild -list
-      - name: Run core tests
+      - name: Resolve and verify model integration fixes
+        run: bash Scripts/prepare-models.sh
+      - name: Check dependency patch safety
+        run: python3 Scripts/test_model_patches.py
+      - name: Run core and model frontend tests
         run: |
           xcodebuild test \
+            -disableAutomaticPackageResolution \
             -scheme EchoVoice-Package \
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath .xcbuild \
+            -resultBundlePath .xcbuild/EchoVoice-tests.xcresult \
             -skipMacroValidation \
             -skipPackagePluginValidation \
             -only-testing:EchoVoiceTests \
+            -only-testing:EchoVoiceModelTests \
             CODE_SIGNING_ALLOWED=NO \
             -quiet
+      - name: Explain test failures
+        if: failure()
+        run: |
+          if [ -d .xcbuild/EchoVoice-tests.xcresult ]; then
+            xcrun xcresulttool get test-results summary --path .xcbuild/EchoVoice-tests.xcresult --format json
+          fi
+      - name: Upload failing test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: EchoVoice-test-diagnostics
+          path: .xcbuild/EchoVoice-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Build, package, and verify app bundle and ZIP
         run: bash Scripts/package-app.sh
       - name: Launch app smoke test

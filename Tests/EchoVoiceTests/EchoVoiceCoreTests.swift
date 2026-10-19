@@ -194,7 +194,7 @@ final class LibraryTests: XCTestCase {
     }
 
     func testVoiceModel() {
-        XCTAssertEqual(VoiceModel.repository, "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit")
+        XCTAssertEqual(VoiceModel.qwen.repository, "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit")
     }
 
     /// Libraries saved by earlier versions have a "quality" field on each recording; it is ignored.
@@ -206,6 +206,25 @@ final class LibraryTests: XCTestCase {
         let item = try JSONDecoder().decode(HistoryItem.self, from: Data(json.utf8))
         XCTAssertEqual(item.direction, "calm")
         XCTAssertEqual(item.voiceName, "Ada")
+        XCTAssertNil(item.model)
+    }
+
+    func testSavedModelRoundTripAndLegacySelection() throws {
+        XCTAssertEqual(VoiceModel.restored(nil), .qwen)
+        XCTAssertEqual(VoiceModel.restored("invalid"), .qwen)
+        XCTAssertEqual(VoiceModel.restored("chatterbox"), .chatterbox)
+        for selected in VoiceModel.allCases {
+            let item = HistoryItem(date: Date(timeIntervalSince1970: 0), voiceID: UUID(), voiceName: "Ada", script: "Hello.", direction: nil,
+                filePath: "/tmp/test.wav", seconds: 2, seed: 42, cutOffParts: [], generationSeconds: 3,
+                model: selected)
+            let restored = try LibraryStore.decoder.decode(HistoryItem.self, from: LibraryStore.encoder.encode(item))
+            XCTAssertEqual(restored, item)
+        }
+    }
+
+    func testChatterboxTranscriptIsOptionalButQwenStillRequiresIt() throws {
+        XCTAssertEqual(try VoiceRules.transcript("  ", required: VoiceModel.chatterbox.requiresTranscript), "")
+        XCTAssertThrowsError(try VoiceRules.transcript("  ", required: VoiceModel.qwen.requiresTranscript))
     }
 
     func testClockText() {
