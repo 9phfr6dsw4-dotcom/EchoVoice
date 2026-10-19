@@ -36,9 +36,11 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
     /// Parts (1-based) that reached the model's length limit and may be cut off.
     public var cutOffParts: [Int]
     public var generationSeconds: Double
+    /// Nil on recordings saved before model selection was introduced.
+    public var model: VoiceModel?
 
     public init(id: UUID = UUID(), date: Date = Date(), voiceID: UUID, voiceName: String, script: String, direction: String?,
-                filePath: String, seconds: Double, seed: UInt64, cutOffParts: [Int], generationSeconds: Double) {
+                filePath: String, seconds: Double, seed: UInt64, cutOffParts: [Int], generationSeconds: Double, model: VoiceModel? = nil) {
         self.id = id
         self.date = date
         self.voiceID = voiceID
@@ -50,16 +52,44 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
         self.seed = seed
         self.cutOffParts = cutOffParts
         self.generationSeconds = generationSeconds
+        self.model = model
     }
 
     public var fileName: String { URL(fileURLWithPath: filePath).lastPathComponent }
 }
 
-/// The one voice model EchoVoice runs: Qwen3-TTS 1.7B Base, 8-bit, on MLX.
-public enum VoiceModel {
-    public static let repository = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit"
-    public static let title = "Qwen3-TTS 1.7B (8-bit)"
-    public static let detail = "Alibaba's Qwen3-TTS Base model, compressed to 8 bits so it runs comfortably on a Mac. It copies a voice from a short clip."
+/// Both engines use the same saved 24 kHz reference clips and produce 24 kHz audio.
+public enum VoiceModel: String, Codable, CaseIterable, Identifiable, Sendable {
+    case qwen, chatterbox
+
+    public var id: String { rawValue }
+    public var repository: String {
+        switch self {
+        case .qwen: return "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit"
+        case .chatterbox: return "mlx-community/chatterbox-turbo-fp16"
+        }
+    }
+    public var title: String {
+        switch self {
+        case .qwen: return "Qwen3-TTS 1.7B (8-bit)"
+        case .chatterbox: return "Chatterbox Turbo"
+        }
+    }
+    public var detail: String {
+        switch self {
+        case .qwen: return "Copies your voice from a clip and its exact words. English speech, with corrected voice-reference processing."
+        case .chatterbox: return "An English voice-cloning model from Resemble AI. Uses your saved clip without needing its transcript."
+        }
+    }
+    public var requiresTranscript: Bool { self == .qwen }
+    /// Approximately one minute at 12.5 Qwen steps/s or 25 Chatterbox steps/s.
+    public var maxStepsPerPart: Int { self == .qwen ? 750 : 1500 }
+    public var repositories: [String] {
+        self == .qwen ? [repository] : [repository, "mlx-community/S3TokenizerV2"]
+    }
+    public static func restored(_ rawValue: String?) -> VoiceModel {
+        rawValue.flatMap(Self.init(rawValue:)) ?? .qwen
+    }
 }
 
 public enum VoiceRules {
@@ -95,9 +125,9 @@ public enum VoiceRules {
         return name
     }
 
-    public static func transcript(_ raw: String) throws -> String {
+    public static func transcript(_ raw: String, required: Bool = true) throws -> String {
         let text = raw.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        guard !text.isEmpty else { throw Problem.emptyTranscript }
+        guard !required || !text.isEmpty else { throw Problem.emptyTranscript }
         guard text.count <= maximumTranscriptLength else { throw Problem.transcriptTooLong }
         return text
     }

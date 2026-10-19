@@ -9,6 +9,12 @@ struct SettingsView: View {
         Page(title: "Thoughtful settings", subtitle: "A few details, just the way you like them. Everything stays on your Mac.") {
             GroupBox("Voice model") {
                 VStack(alignment: .leading, spacing: 20) {
+                    Picker("Model", selection: $model.selectedModel) {
+                        ForEach(VoiceModel.allCases) { selected in
+                            Text(selected.title).tag(selected)
+                        }
+                    }
+                    .disabled(model.isModelBusy)
                     modelRow
                     if case .downloading(let fraction) = model.modelState {
                         DownloadProgressRow(fraction: fraction)
@@ -48,7 +54,7 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Free up memory now") { model.freeMemory() }
-                            .disabled(model.modelState != .ready || model.isGenerating)
+                            .disabled(model.modelState != .ready || model.isModelBusy)
                     }
                     Caption("Freeing memory unloads the voice model. It loads again, in a few seconds, before your next generation.")
                 }
@@ -63,7 +69,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Label("No account, no analytics, no tracking.", systemImage: "eye.slash")
                         .fixedSize(horizontal: false, vertical: true)
-                    Caption("EchoVoice runs Qwen3-TTS by Alibaba's Qwen team with Apple's MLX. Its model card has the license details.")
+                    Caption("Qwen3-TTS (Apache 2.0) and Chatterbox Turbo (MIT) run with Apple's MLX. Both permit commercial use under their license terms.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
@@ -85,7 +91,7 @@ struct SettingsView: View {
         return HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(VoiceModel.title)
+                    Text(model.selectedModel.title)
                         .font(.system(size: 14, weight: .medium))
                     if downloaded {
                         Text("On this Mac")
@@ -96,15 +102,15 @@ struct SettingsView: View {
                             .foregroundStyle(Theme.success)
                     }
                 }
-                Caption(VoiceModel.detail)
+                Caption(model.selectedModel.detail)
             }
             Spacer()
             if !downloaded {
                 Button("Download") { model.downloadModel() }
-                    .disabled(model.isGenerating || model.isDownloading)
+                    .disabled(model.isModelBusy)
             } else {
                 Button("Remove") { model.removeModel() }
-                    .disabled(model.isGenerating || model.isDownloading)
+                    .disabled(model.isModelBusy)
                     .help("Move this download to the Trash to free disk space.")
             }
         }

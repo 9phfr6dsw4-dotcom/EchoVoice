@@ -75,6 +75,19 @@ final class AppModel {
         set { storedVoiceID = newValue; defaults.set(newValue?.uuidString, forKey: Keys.voice) }
     }
 
+    var selectedModel: VoiceModel {
+        get { storedModel }
+        set {
+            guard !isModelBusy, newValue != storedModel else { return }
+            storedModel = newValue
+            defaults.set(newValue.rawValue, forKey: Keys.model)
+            modelState = engine.isDownloaded(newValue) ? .idle : .notDownloaded
+            freeMemory()
+        }
+    }
+    private(set) var isManagingModel = false
+    var isModelBusy: Bool { isGenerating || isDownloading || isManagingModel }
+
     // Settings.
     var playWhenDone: Bool {
         get { storedPlayWhenDone }
@@ -90,11 +103,13 @@ final class AppModel {
     let playback = Playback()
 
     private var storedScript: String
+    private var storedModel: VoiceModel
     private var storedVoiceID: UUID?
     private var storedPlayWhenDone: Bool
     private var storedUnloadMinutes: Int
 
     enum Keys {
+        static let model = "EchoVoice.model"
         static let script = "EchoVoice.script"
         static let voice = "EchoVoice.voice"
         static let playWhenDone = "EchoVoice.playWhenDone"
@@ -119,6 +134,7 @@ final class AppModel {
         voicesFolder = root.appendingPathComponent("Voices", isDirectory: true)
         engine = VoiceEngine(modelsFolder: root.appendingPathComponent("Models", isDirectory: true))
 
+        storedModel = VoiceModel.restored(defaults.string(forKey: Keys.model))
         storedScript = defaults.string(forKey: Keys.script) ?? ""
         storedVoiceID = defaults.string(forKey: Keys.voice).flatMap(UUID.init(uuidString:))
         storedPlayWhenDone = defaults.object(forKey: Keys.playWhenDone) as? Bool ?? true
@@ -152,7 +168,7 @@ final class AppModel {
     @discardableResult
     func addVoice(name: String, transcript: String, samples: [Float]) throws -> Voice {
         let cleanName = try VoiceRules.name(name, existing: library.voices)
-        let cleanTranscript = try VoiceRules.transcript(transcript)
+        let cleanTranscript = try VoiceRules.transcript(transcript, required: selectedModel.requiresTranscript)
         let check = try ReferenceCheck.check(samples, sampleRate: VoiceEngine.sampleRate)
         let voice = Voice(name: cleanName, transcript: cleanTranscript, seconds: check.seconds)
         try FileManager.default.createDirectory(at: voicesFolder, withIntermediateDirectories: true)
@@ -167,7 +183,7 @@ final class AppModel {
     func updateVoice(_ id: UUID, name: String, transcript: String) throws {
         guard let index = library.voices.firstIndex(where: { $0.id == id }) else { return }
         let cleanName = try VoiceRules.name(name, existing: library.voices, excluding: id)
-        let cleanTranscript = try VoiceRules.transcript(transcript)
+        let cleanTranscript = try VoiceRules.transcript(transcript, required: selectedModel.requiresTranscript)
         library.voices[index].name = cleanName
         library.voices[index].transcript = cleanTranscript
         save()
@@ -206,6 +222,10 @@ final class AppModel {
             errorMessage = "The voice “\(item.voiceName)” was deleted, so this audio can't be generated again."
             return
         }
+        guard !isModelBusy else { return }
+        // This take starts immediately; prepare() unloads the previous engine serially.
+        storedModel = item.model ?? .qwen
+        defaults.set(storedModel.rawValue, forKey: Keys.model)
         script = item.script
         selectedVoiceID = voice.id
         section = .generate
@@ -217,11 +237,16 @@ final class AppModel {
     }
 
     private func start(script: String, voice: Voice, seed: UInt64) {
-        guard generationTask == nil else { return }
+        guard generationTask == nil, !isManagingModel else { return }
         guard downloadTask == nil else {
             errorMessage = "The voice model is still downloading. Generate audio when the download finishes."
             return
         }
+        if selectedModel.requiresTranscript && voice.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "Qwen needs the exact words spoken in this voice clip. Add them in Voices, or choose Chatterbox Turbo."
+            return
+        }
+        let generationModel = selectedModel
         let plan: GenerationPlan
         do {
             plan = try GenerationPlan(script: script, seed: seed)
@@ -235,7 +260,7 @@ final class AppModel {
         playback.stop()
         let clip = clipURL(for: voice)
         generationTask = Task { [weak self] in
-            await self?.run(script: script, plan: plan, voice: voice, clip: clip)
+            await self?.run(script: script, plan: plan, voice: voice, clip: clip, generationModel: generationModel)
             self?.generationTask = nil
             self?.progress = nil
             self?.refreshModelState()
@@ -243,14 +268,15 @@ final class AppModel {
         }
     }
 
-    private func run(script: String, plan: GenerationPlan, voice: Voice, clip: URL) async {
+    private func run(script: String, plan: GenerationPlan, voice: Voice, clip: URL, generationModel: VoiceModel) async {
         let started = Date()
         do {
             progress = GenerationProgress(part: 0, parts: plan.parts.count, secondsLeft: nil, stage: "Getting your voice ready…")
             let reference = try await Task.detached(priority: .userInitiated) {
                 try AudioFileReader.monoSamples(from: clip, sampleRate: VoiceEngine.sampleRate)
             }.value
-            try await prepareModel()
+            try await prepareModel(generationModel)
+            try await engine.setReference(reference, transcript: voice.transcript)
             var pieces: [[Float]] = []
             var cutOff: [Int] = []
             let partsStarted = Date()
@@ -261,10 +287,9 @@ final class AppModel {
                     secondsLeft: plan.remainingSeconds(finishedParts: index, elapsed: Date().timeIntervalSince(partsStarted)),
                     stage: plan.parts.count == 1 ? "Speaking…" : "Speaking part \(index + 1) of \(plan.parts.count)…"
                 )
-                let result = try await engine.speak(text: part.text, reference: reference,
-                                                    referenceText: voice.transcript, seed: plan.seed(forPart: index))
+                let result = try await engine.speak(text: part.text, seed: plan.seed(forPart: index))
                 pieces.append(result.samples)
-                if GenerationPlan.wasCutOff(steps: result.steps) { cutOff.append(index + 1) }
+                if result.steps >= generationModel.maxStepsPerPart { cutOff.append(index + 1) }
             }
             progress = GenerationProgress(part: plan.parts.count, parts: plan.parts.count, secondsLeft: nil, stage: "Saving…")
             let samples = AudioTools.join(pieces, pauses: plan.parts.map(\.pauseAfter), sampleRate: VoiceEngine.sampleRate)
@@ -276,7 +301,7 @@ final class AppModel {
                 date: date, voiceID: voice.id, voiceName: voice.name, script: script.trimmingCharacters(in: .whitespacesAndNewlines),
                 direction: nil, filePath: url.path,
                 seconds: AudioTools.duration(sampleCount: samples.count, sampleRate: VoiceEngine.sampleRate),
-                seed: plan.seed, cutOffParts: cutOff, generationSeconds: Date().timeIntervalSince(started)
+                seed: plan.seed, cutOffParts: cutOff, generationSeconds: Date().timeIntervalSince(started), model: generationModel
             )
             library.history.append(item)
             save()
@@ -327,9 +352,9 @@ final class AppModel {
 
     // MARK: The voice model
 
-    private func prepareModel() async throws {
-        if !engine.isDownloaded { modelState = .downloading(0) } else { modelState = .loading }
-        try await engine.prepare { [weak self] fraction in
+    private func prepareModel(_ selected: VoiceModel) async throws {
+        if !engine.isDownloaded(selected) { modelState = .downloading(0) } else { modelState = .loading }
+        try await engine.prepare(selected) { [weak self] fraction in
             guard let self else { return }
             if fraction < 1 {
                 self.modelState = .downloading(fraction)
@@ -342,12 +367,13 @@ final class AppModel {
 
     /// Downloads the voice model ahead of time, so the first recording starts right away.
     func downloadModel() {
-        guard downloadTask == nil, !isGenerating else { return }
+        guard !isModelBusy else { return }
+        let selected = selectedModel
         modelState = .downloading(0)
         downloadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                _ = try await self.engine.download { [weak self] fraction in
+                _ = try await self.engine.download(selected) { [weak self] fraction in
                     self?.modelState = .downloading(fraction)
                 }
                 self.statusMessage = "The voice model is downloaded. You're ready to go."
@@ -370,28 +396,40 @@ final class AppModel {
     }
 
     var isModelDownloaded: Bool {
-        engine.isDownloaded
+        engine.isDownloaded(selectedModel)
     }
 
     /// Moves the downloaded model to the Trash to free disk space.
     func removeModel() {
-        guard !isGenerating, !isDownloading else { return }
+        guard !isModelBusy else { return }
+        let selected = selectedModel
+        isManagingModel = true
         Task {
+            defer { isManagingModel = false; refreshModelState() }
             await engine.unload()
-            try? FileManager.default.trashItem(at: engine.folder, resultingItemURL: nil)
-            refreshModelState()
-            statusMessage = "Moved the voice model to the Trash. Empty the Trash to free the disk space."
+            do {
+                for repository in selected.repositories {
+                    let folder = engine.folder(for: repository)
+                    if FileManager.default.fileExists(atPath: folder.path) {
+                        try FileManager.default.trashItem(at: folder, resultingItemURL: nil)
+                    }
+                }
+                statusMessage = "Moved the selected model to the Trash. Empty the Trash to free disk space."
+            } catch {
+                errorMessage = "Couldn't remove the model: \(error.localizedDescription)"
+            }
         }
     }
 
     /// Frees up the model's memory now. It loads again before the next generation.
     func freeMemory() {
-        guard !isGenerating else { return }
+        guard !isModelBusy else { return }
         unloadTask?.cancel()
+        isManagingModel = true
         Task {
             await engine.unload()
+            isManagingModel = false
             refreshModelState()
-            statusMessage = "Memory freed up. The voice model loads again before your next generation."
         }
     }
 
@@ -401,7 +439,7 @@ final class AppModel {
         guard minutes > 0 else { return }
         unloadTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(minutes * 60))
-            guard !Task.isCancelled, let self, !self.isGenerating else { return }
+            guard !Task.isCancelled, let self, !self.isModelBusy else { return }
             await self.engine.unload()
             self.refreshModelState()
         }
@@ -410,12 +448,14 @@ final class AppModel {
     func refreshModelState() {
         if case .downloading = modelState, downloadTask != nil || isGenerating { return }
         Task {
-            let loaded = await engine.isLoaded
+            let selected = selectedModel
+            let loaded = await engine.isLoaded(selected)
+            guard selected == selectedModel, !isManagingModel else { return }
             if case .downloading = modelState, downloadTask != nil || isGenerating { return }
             if loaded {
                 modelState = .ready
             } else {
-                modelState = engine.isDownloaded ? .idle : .notDownloaded
+                modelState = engine.isDownloaded(selected) ? .idle : .notDownloaded
             }
         }
     }

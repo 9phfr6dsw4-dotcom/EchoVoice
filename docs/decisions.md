@@ -3,13 +3,13 @@
 ## Native and local
 
 - A native SwiftUI app for macOS 26 on Apple Silicon. No Terminal, no local web server, no Python.
-- Speech is made by Qwen3-TTS 1.7B Base (8-bit, `mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit`) through mlx-audio-swift on MLX. It is the only model: there is no quality picker. It is downloaded once from Hugging Face into `~/Library/Application Support/EchoVoice/Models`, without a second copy in a shared cache. After that EchoVoice works offline.
+- Speech is made by Qwen3-TTS 1.7B Base (8-bit, `mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit`) through mlx-audio-swift on MLX. Chatterbox Turbo FP16 (`mlx-community/chatterbox-turbo-fp16`) is also available for English cloning. Qwen remains the upgrade default; selection is saved and new recordings remember their model. Only one engine is loaded at a time. It is downloaded once from Hugging Face into `~/Library/Application Support/EchoVoice/Models`, without a second copy in a shared cache. After that EchoVoice works offline.
 - Voices, scripts, the Recordings list and audio files never leave the Mac. No accounts, analytics or uploads.
 - The model is loaded on demand and released after a configurable idle time (default 10 minutes), so it doesn't hold memory between uses.
 
 ## Voices
 
-- A voice is one clip plus its exact transcript, which Qwen3-TTS needs for cloning. Clips are converted to mono 24 kHz, silence is trimmed, quiet clips are raised, and clips must be 3 to 60 seconds of speech (8 to 25 recommended). Silent clips are refused; distorted or long clips get a note.
+- A voice is one clip plus its exact transcript, which Qwen3-TTS needs for cloning; the transcript is optional when saving a voice for Chatterbox. Chatterbox requires more than five seconds of reference speech. Clips are converted to mono 24 kHz, silence is trimmed, quiet clips are raised, and clips must be 3 to 60 seconds of speech (8 to 25 recommended). Silent clips are refused; distorted or long clips get a note.
 - Transcripts are written by Apple's on-device speech recognition (SpeechTranscriber) and always shown for checking before saving.
 - Deleting a voice moves its clip to the Trash. Recordings made with it are kept.
 
@@ -48,3 +48,7 @@ Artwork can be regenerated with `swift Scripts/DrawPearlIcon.swift .`; it uses t
 - Dependencies are pinned: mlx-audio-swift to a tested commit, and MLX, Hugging Face and transformers packages to exact versions.
 - CI tests, packages and smoke-launches the app. Releases attach the tested ZIP and its checksum from the main-branch CI build.
 
+
+- Since 0.5.0, `Scripts/prepare-models.sh` resolves the exact pinned MLX dependency and applies hash-checked, idempotent fixes. Qwen uses a dedicated speaker frontend matching the official Slaney log-magnitude formula, without changing DSP shared with other models. Its reference cache keeps the input alive, and the app prepares conditioning once per recording. CPU tests compare the actual patched function against synthetic librosa data.
+- Chatterbox Turbo downloads both its main checkpoint and S3TokenizerV2 into the app model folder. The patched factory loads that tokenizer locally and propagates errors instead of silently falling back to default voice tokens. Its request token cap is honored, actual speech tokens are reported, and its 1,500-step budget reflects 25 tokens per second. Qwen retains its 750-step budget.
+- Libraries predating model selection decode with an absent model field. Existing audio remains playable; legacy regeneration uses Qwen, and corrected conditioning can change its sound. Reference-clip sample rate remains 24 kHz for both engines.

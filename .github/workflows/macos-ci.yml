@@ -27,17 +27,21 @@ jobs:
           test "${sdk_version%%.*}" -ge 26
       - name: Install the Metal toolchain (MLX's GPU code needs it)
         run: xcodebuild -downloadComponent MetalToolchain
-      - name: Show build schemes
-        run: xcodebuild -list
-      - name: Run core tests
+      - name: Resolve and verify model integration fixes
+        run: bash Scripts/prepare-models.sh
+      - name: Check dependency patch safety
+        run: python3 Scripts/test_model_patches.py
+      - name: Run core and model frontend tests
         run: |
           xcodebuild test \
+            -disableAutomaticPackageResolution \
             -scheme EchoVoice-Package \
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath .xcbuild \
             -skipMacroValidation \
             -skipPackagePluginValidation \
             -only-testing:EchoVoiceTests \
+            -only-testing:EchoVoiceModelTests \
             CODE_SIGNING_ALLOWED=NO \
             -quiet
       - name: Build, package, and verify app bundle and ZIP

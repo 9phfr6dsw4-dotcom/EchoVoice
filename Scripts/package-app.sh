@@ -11,8 +11,8 @@ VERIFY_DIR="dist/verify-extracted"
 ZIP="dist/EchoVoice.zip"
 DERIVED=".xcbuild"
 PRODUCTS="$DERIVED/Build/Products/Release"
-VERSION="0.4.0"
-BUILD="5"
+VERSION="0.5.0"
+BUILD="6"
 
 fail() {
     echo "error: $*" >&2
@@ -26,8 +26,11 @@ expect_plist() {
     [ "$actual" = "$3" ] || fail "Info.plist $2 is '$actual', expected '$3'"
 }
 
+bash Scripts/prepare-models.sh
+
 # MLX's GPU code (Metal) is compiled only by Xcode, so the app is built with xcodebuild, not swift build.
 xcodebuild build \
+    -disableAutomaticPackageResolution \
     -scheme EchoVoiceApp \
     -configuration Release \
     -destination 'platform=macOS,arch=arm64' \
