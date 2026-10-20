@@ -7,7 +7,7 @@
 # $GITHUB_ENV. Never prints a secret.
 #
 # Secrets read from the environment:
-#   DEVELOPER_ID_P12_BASE64, DEVELOPER_ID_P12_PASSWORD     (later, with Apple's program)
+#   DEVELOPER_ID_P12_BASE64, DEVELOPER_ID_P12_PASSWORD     (Developer ID signing)
 #   NOTARY_API_KEY_P8_BASE64, NOTARY_API_KEY_ID, NOTARY_API_ISSUER_ID
 #   SELF_SIGN_P12_BASE64, SELF_SIGN_P12_PASSWORD           (the self-signed trial)
 set -euo pipefail
@@ -24,6 +24,11 @@ fi
 write_env() {
     printf '%s=%s\n' "$1" "$2" >> "$GITHUB_ENV"
 }
+
+if [[ "${REQUIRE_DEVELOPER_ID:-false}" == "true" && -z "${DEVELOPER_ID_P12_BASE64:-}" ]]; then
+    echo "Developer ID signing is required for this run; DEVELOPER_ID_P12_BASE64 is missing." >&2
+    exit 1
+fi
 
 if [[ -n "${DEVELOPER_ID_P12_BASE64:-}" ]]; then
     MODE="developer-id"
@@ -65,18 +70,21 @@ done < <(security list-keychains -d user)
 security list-keychains -d user -s "$KEYCHAIN" "${existing[@]}"
 
 # Without -v so a self-signed certificate (valid for signing, not trusted by macOS) is listed too.
-IDENTITY="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) ([0-9A-F]{40}) .*/\1/p' | sed -n 1p)"
+# A trusted certificate (Developer ID) is listed twice, under "matching" and "valid", so take the first.
+IDENTITY="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) ([0-9A-F]{40}) .*/\1/p' | head -n 1)"
 if [[ -z "$IDENTITY" ]]; then
     echo "The certificate in the secrets has no code-signing identity." >&2
     exit 1
 fi
-NAME="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) [0-9A-F]{40} "([^"]*)".*/\1/p' | sed -n 1p)"
-[[ -n "$NAME" ]] && echo "::add-mask::$NAME"
+NAME="$(security find-identity -p codesigning "$KEYCHAIN" | sed -nE 's/^ *1\) [0-9A-F]{40} "([^"]*)".*/\1/p' | head -n 1)"
 if [[ "$MODE" == "developer-id" && "$NAME" != "Developer ID Application:"* ]]; then
-    echo "The Developer ID secret does not hold a Developer ID Application certificate." >&2
+    echo "The Developer ID secret is not a Developer ID Application certificate." >&2
     exit 1
 fi
-echo "Signing ($MODE), certificate SHA-1 $IDENTITY."
+# GitHub also masks the name should a later Apple tool include it in an error.
+[[ -z "$NAME" ]] || echo "::add-mask::$NAME"
+# The certificate name is not printed: a Developer ID name is the account holder's legal name.
+echo "Signing in $MODE mode."
 
 write_env SIGN_MODE "$MODE"
 write_env SIGN_IDENTITY "$IDENTITY"

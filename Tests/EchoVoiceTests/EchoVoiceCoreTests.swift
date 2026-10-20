@@ -210,6 +210,43 @@ final class LibraryTests: XCTestCase {
         XCTAssertNil(item.model)
     }
 
+    /// Load real pre-0.4.0 library shapes, not a current-model encode/decode round trip.
+    func testOldLibrariesWithAndWithoutDeliveryStyleKeepLoading() throws {
+        for style in ["\"direction\":\"calm, happy\",", "\"direction\":null,", ""] {
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let store = LibraryStore(fileURL: folder.appendingPathComponent("library.json"))
+            let voiceID = UUID().uuidString
+            let recordingID = UUID().uuidString
+            let json = """
+            {"voices":[{"id":"\(voiceID)","name":"Ada","transcript":"Hello.","seconds":10,"created":"2026-10-13T12:00:00Z"}],
+             "history":[{"id":"\(recordingID)","date":"2026-10-13T12:00:00Z","voiceID":"\(voiceID)","voiceName":"Ada",
+             "script":"Hi.",\(style)"filePath":"/tmp/old-take.wav","seconds":2,"seed":42,"quality":"standard",
+             "cutOffParts":[],"generationSeconds":3}]}
+            """
+            let original = Data(json.utf8)
+            try original.write(to: store.fileURL)
+            let library = store.load()
+            XCTAssertEqual(library.voices.count, 1)
+            let item = try XCTUnwrap(library.history.first)
+            XCTAssertEqual(item.id.uuidString, recordingID)
+            XCTAssertEqual(item.voiceID, library.voices.first?.id)
+            XCTAssertEqual(item.filePath, "/tmp/old-take.wav")
+            XCTAssertEqual(item.seed, 42)
+            XCTAssertEqual(item.direction, style.contains("calm") ? "calm, happy" : nil)
+            XCTAssertNil(item.model)
+            XCTAssertEqual(try Data(contentsOf: store.fileURL), original, "Loading must not rewrite the old library")
+            try store.save(library)
+            XCTAssertEqual(store.load(), library)
+            let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as? [String: Any])
+            let history = try XCTUnwrap(saved["history"] as? [[String: Any]])
+            XCTAssertNil(history[0]["style"], "Keep the original direction key")
+            if let direction = item.direction { XCTAssertEqual(history[0]["direction"] as? String, direction) }
+            XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.contains("damaged") })
+        }
+    }
+
     func testSavedModelRoundTripAndLegacySelection() throws {
         XCTAssertEqual(VoiceModel.restored(nil), .breeze)
         XCTAssertEqual(VoiceModel.restored("invalid"), .breeze)

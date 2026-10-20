@@ -20,8 +20,9 @@
 - **Any length.** Paste a sentence or a whole article. Long scripts are split at sentence boundaries, spoken part by part and joined into one file, with slightly longer pauses between paragraphs.
 - **Breeze TTS 2.** The 8-bit Breeze model is the only voice engine, for personal, non-commercial use.
 - **Your voices.** Save as many voices as you like from a short clip: record one with your Mac's microphone, or import WAV, M4A, MP3 or AIFF. EchoVoice trims the silence, checks the clip, and writes down its words with Apple's on-device speech recognition. You just check them.
-- **New Script.** Clear the script in one click to start the next one, keeping your voice. Changed your mind? **Undo** brings it back.
-- **Recordings.** Every generated audio file with its script, voice and date. Play it, find it in Finder, drag it into another app, reuse the script, or make it again: **Same Take** repeats it with the same seed, **New Take** gives a fresh reading.
+- **Delivery style.** Add an optional direction such as happy, angry, calm or upbeat. Breeze applies it to your reference voice; styled generation takes about twice as long.
+- **New Script.** Clear the script and delivery style in one click, keeping your voice. Changed your mind? **Undo** brings both back.
+- **Recordings.** Every generated audio file with its script, delivery style, voice and date. Play it, find it in Finder, drag it into another app, reuse the script, or make it again: **Same Take** repeats it with the same seed, **New Take** gives a fresh reading.
 - **Saved automatically** as WAV files in Downloads → EchoVoice, or a folder you choose.
 - **Easy on your Mac.** The model loads when you need it and releases its memory after a few idle minutes.
 - **Private.** Everything runs on your Mac. The internet is used to download the voice model, and to check GitHub for a new version of EchoVoice. Your voices, scripts and audio are never uploaded.
@@ -38,17 +39,17 @@ Native captures of all four screens at the default, minimum and a large full-scr
 
 1. Download `EchoVoice.zip` from the [latest release](https://github.com/9phfr6dsw4-dotcom/EchoVoice/releases/latest) and unzip it.
 2. Drag **EchoVoice** into **Applications** (choose **Replace** when updating).
-3. Open it. If macOS blocks it, open **System Settings → Privacy & Security** and choose **Open Anyway**.
-
-From 0.6.0 on, EchoVoice updates itself: it checks for a new version when it starts and every hour, and installs it once no voice is being made. **Check for Updates…** is in the app menu, and the **Settings** page has the options.
+3. Open it. EchoVoice is Developer ID signed and notarized by Apple. If macOS asks whether to open an app downloaded from the internet, choose **Open**.
 4. The first time you generate audio, the voice model downloads once (a few GB). You can also start the download from the Generate page or Settings.
+
+From 0.6.0 on, EchoVoice updates itself: it checks for a new version when it starts and every hour, and installs it once no voice is being made. **Check for Updates…** is in the app menu, and the **Settings** page has the options. The 0.8.0 signing change may ask you to allow the microphone once more when recording a voice.
 
 You need an Apple Silicon Mac with macOS 26. 16 GB of memory is comfortable.
 
 ## How it works
 
 1. **A voice** is a clip of one person speaking (8 to 25 seconds is ideal; Breeze accepts 3 to 60 seconds). The exact spoken words are required. If a voice saved for Chatterbox has an empty transcript, add its words in Voices before generating. The clip is stored as a 24 kHz WAV in `~/Library/Application Support/EchoVoice/Voices`.
-2. **Generating audio** splits your script into parts of about 25 seconds of speech each. Each part is spoken by Breeze in the chosen voice, with its own seed derived from the recording's seed, and new recordings remember their model for regeneration. If a part ever reaches the model's length limit, EchoVoice says so.
+2. **Generating audio** splits your script into parts of about 25 seconds of speech each. Each part is spoken by Breeze in the chosen voice and optional delivery style, with its own seed derived from the recording's seed. Recordings remember their style and model; Same Take, New Take and Use Script restore the saved style. If a part ever reaches the model's length limit, EchoVoice says so.
 3. **The parts are joined** with short pauses and saved as a 16-bit WAV file. The Recordings list is kept in `~/Library/Application Support/EchoVoice/library.json`.
 
 Model downloads are stored in `~/Library/Application Support/EchoVoice/Models`. Remove Breeze in Settings to free its space; it can be downloaded again. Existing 8-bit Breeze downloads are reused if complete. After downloading, generation works offline.
@@ -84,6 +85,8 @@ bash Scripts/smoke-test.sh       # launch the packaged app from a clean folder
 - `Tests/EchoVoiceTests`: tests for the core and saved-library compatibility.
 - `Tests/EchoVoiceModelTests`: Retained dependency regression tests of the Qwen frontend (not an available voice engine) against synthetic librosa reference data. No model download is needed.
 - `Scripts/prepare-models.sh`: resolves the pinned audio dependency and applies exact, idempotent source fixes before testing or packaging. It fails if the revision or source has changed. Qwen’s speaker frontend is corrected independently of shared DSP; Chatterbox gets a local tokenizer loader and correct generation limits/counts.
+- `Scripts/release/notary_status.py`: polls Apple from a Linux CI job for up to three hours. The macOS job submits the exact signed, tested ZIP without waiting or stapling. Publication requires Developer ID signing and the matching Accepted submission.
+- `Resources/EchoVoice.entitlements`: microphone access for the hardened runtime. MLX uses compiled Metal kernels and the system Metal compiler; no executable-memory JIT entitlement is needed.
 - `Resources/AppIcon.icon`: the app icon in Icon Composer format, compiled into `Assets.car` by the packaging script. `Resources/AppIcon-1024.png` is the classic `.icns` fallback.
 
 ## License
