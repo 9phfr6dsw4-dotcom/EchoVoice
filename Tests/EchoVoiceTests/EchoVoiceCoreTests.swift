@@ -129,12 +129,12 @@ final class AudioToolsTests: XCTestCase {
 
 final class LibraryTests: XCTestCase {
     func testVoiceNamesAreCleanAndUnique() throws {
-        let jordan = Voice(name: "Jordan", transcript: "Hi.", seconds: 10)
-        XCTAssertEqual(try VoiceRules.name("  Jordan   take 2 ", existing: [jordan]), "Jordan take 2")
-        XCTAssertThrowsError(try VoiceRules.name("JORDAN", existing: [jordan])) {
-            XCTAssertEqual($0 as? VoiceRules.Problem, .duplicateName("Jordan"))
+        let alex = Voice(name: "Alex", transcript: "Hi.", seconds: 10)
+        XCTAssertEqual(try VoiceRules.name("  Alex   take 2 ", existing: [alex]), "Alex take 2")
+        XCTAssertThrowsError(try VoiceRules.name("ALEX", existing: [alex])) {
+            XCTAssertEqual($0 as? VoiceRules.Problem, .duplicateName("Alex"))
         }
-        XCTAssertEqual(try VoiceRules.name("jordan", existing: [jordan], excluding: jordan.id), "jordan")
+        XCTAssertEqual(try VoiceRules.name("alex", existing: [alex], excluding: alex.id), "alex")
         XCTAssertThrowsError(try VoiceRules.name("   ", existing: []))
         XCTAssertThrowsError(try VoiceRules.name(String(repeating: "a", count: 81), existing: []))
         XCTAssertEqual(try VoiceRules.transcript(" Hello\n there. "), "Hello there.")
@@ -143,7 +143,7 @@ final class LibraryTests: XCTestCase {
 
     func testHistorySearchMatchesEveryWordNewestFirst() {
         let voice = UUID()
-        func item(_ script: String, _ age: Double, name: String = "Jordan") -> HistoryItem {
+        func item(_ script: String, _ age: Double, name: String = "Alex") -> HistoryItem {
             HistoryItem(date: Date(timeIntervalSince1970: 1_000_000 - age), voiceID: voice, voiceName: name, script: script, direction: nil,
                         filePath: "/tmp/\(script).wav", seconds: 3, seed: 1, cutOffParts: [], generationSeconds: 5)
         }
@@ -158,7 +158,7 @@ final class LibraryTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let store = LibraryStore(fileURL: folder.appendingPathComponent("library.json"))
         XCTAssertEqual(store.load(), LibraryState())
-        let voice = Voice(name: "Jordan", transcript: "Hi there.", seconds: 12.5, created: Date(timeIntervalSince1970: 1_700_000_000))
+        let voice = Voice(name: "Alex", transcript: "Hi there.", seconds: 12.5, created: Date(timeIntervalSince1970: 1_700_000_000))
         let state = LibraryState(voices: [voice])
         try store.save(state)
         XCTAssertEqual(store.load(), state)
@@ -172,8 +172,8 @@ final class LibraryTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let date = Date(timeIntervalSince1970: 1_791_900_322)
-        XCTAssertEqual(FileNaming.recordingName(voiceName: "Jordan / take: 2", date: date, calendar: calendar),
-                       "EchoVoice – Jordan take 2 – 2026-10-13 at 14.05.22.wav")
+        XCTAssertEqual(FileNaming.recordingName(voiceName: "Alex / take: 2", date: date, calendar: calendar),
+                       "EchoVoice – Alex take 2 – 2026-10-13 at 14.05.22.wav")
         XCTAssertEqual(FileNaming.safe("..."), "Voice")
         XCTAssertEqual(FileNaming.safe(String(repeating: "a", count: 50)).count, 40)
         let folder = URL(fileURLWithPath: "/x")
