@@ -204,7 +204,7 @@ public struct LibraryStore: Sendable {
 }
 
 public enum FileNaming {
-    /// "EchoVoice – Jordan – 2026-10-13 at 14.05.22.wav", safe for Finder.
+    /// "EchoVoice – Alex – 2026-10-13 at 14.05.22.wav", safe for Finder.
     public static func recordingName(voiceName: String, date: Date, calendar: Calendar = .current) -> String {
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
         func pad(_ value: Int?) -> String {
