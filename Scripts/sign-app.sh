@@ -52,7 +52,10 @@ codesign "${args[@]}" --preserve-metadata=entitlements "$SPARKLE_VERSION_DIR/XPC
 codesign "${args[@]}" "$SPARKLE_VERSION_DIR/Autoupdate"
 codesign "${args[@]}" "$SPARKLE_VERSION_DIR/Updater.app"
 codesign "${args[@]}" "$SPARKLE"
-codesign "${args[@]}" "$APP"
+# MLX uses compiled Metal kernels and the system Metal compiler, not executable-memory JIT.
+# Only the main app records audio; Sparkle's helpers keep their own entitlements.
+ENTITLEMENTS="$(cd "$(dirname "$0")/.." && pwd)/Resources/EchoVoice.entitlements"
+codesign "${args[@]}" --entitlements "$ENTITLEMENTS" "$APP"
 
 codesign --verify --deep --strict --verbose=2 "$APP"
 printf 'Signed %s (%s)\n' "$APP" "$MODE"

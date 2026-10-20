@@ -27,7 +27,7 @@ public struct HistoryItem: Codable, Equatable, Identifiable, Sendable {
     public var voiceID: UUID
     public var voiceName: String
     public var script: String
-    /// A delivery direction saved by earlier Breeze versions. Kept for library compatibility.
+    /// Optional delivery style, using the original saved-library key.
     public var direction: String?
     public var filePath: String
     public var seconds: Double

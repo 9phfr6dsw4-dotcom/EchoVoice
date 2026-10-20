@@ -14,6 +14,8 @@ jobs:
     name: Test and package on macOS 26
     runs-on: macos-26
     timeout-minutes: 90
+    outputs:
+      notary_submission: ${{ steps.notary.outputs.submission }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -61,6 +63,7 @@ jobs:
           retention-days: 7
       - name: Set up the signing identity
         env:
+          REQUIRE_DEVELOPER_ID: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           SELF_SIGN_P12_BASE64: ${{ secrets.SELF_SIGN_P12_BASE64 }}
           SELF_SIGN_P12_PASSWORD: ${{ secrets.SELF_SIGN_P12_PASSWORD }}
           DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
@@ -71,6 +74,9 @@ jobs:
         run: bash Scripts/ci-signing.sh
       - name: Build, package, and verify app bundle and ZIP
         run: bash Scripts/package-app.sh
+      - name: Record the notarization submission
+        id: notary
+        run: echo "submission=$(sed -n 's/^notary_submission=//p' dist/signing.txt)" >> "$GITHUB_OUTPUT"
       - name: Launch app smoke test
         run: bash Scripts/smoke-test.sh
       - name: Update an older build to a newer one through Sparkle
@@ -88,7 +94,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Upload finished app ZIP
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: EchoVoice-${{ github.run_number }}
@@ -109,7 +114,10 @@ jobs:
         with:
           persist-credentials: false
       - name: Run release tool tests
-        run: python3 -I Scripts/release/test_sparkle_release.py
+        run: |
+          python3 -I Scripts/release/test_sparkle_release.py
+          python3 -I Scripts/release/test_notary_status.py
+          python3 -I Scripts/release/test_signing.py
       - name: Check the app trusts the release signing key
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
@@ -126,9 +134,37 @@ jobs:
           fi
           echo "Info.plist's SUPublicEDKey matches the release signing key."
 
+  notarization:
+    name: Wait for Apple notarization
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 190
+    outputs:
+      accepted_submission: ${{ steps.accepted.outputs.submission }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Wait until Apple accepts the Developer ID build
+        id: accepted
+        env:
+          SUBMISSION: ${{ needs.build.outputs.notary_submission }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          NOTARY_API_KEY_P8_BASE64: ${{ secrets.NOTARY_API_KEY_P8_BASE64 }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
+        run: |
+          if [[ "$IS_FORK" == "true" && -z "$SUBMISSION" ]]; then
+            echo "Fork build has no signing secrets; release remains disabled."
+            exit 0
+          fi
+          [[ -n "$SUBMISSION" ]] || { echo "A Developer ID notarization submission is required." >&2; exit 1; }
+          python3 -I Scripts/release/notary_status.py wait --submission "$SUBMISSION" --timeout 10800
+          echo "submission=$SUBMISSION" >> "$GITHUB_OUTPUT"
+
   release:
     name: Publish release
-    needs: [build, release-tools]
+    needs: [build, release-tools, notarization]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -203,16 +239,15 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD: ${{ steps.version.outputs.build }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          NOTARY_SUBMISSION: ${{ needs.notarization.outputs.accepted_submission }}
         run: |
           sha256sum -c EchoVoice.zip.sha256
           cat signing.txt
           mode="$(sed -n 's/^mode=//p' signing.txt)"
-          notarized="$(sed -n 's/^notarized=//p' signing.txt)"
-          case "$mode" in
-            self-signed) ;;
-            developer-id) [ "$notarized" = "yes" ] || { echo "Developer ID builds must be notarized before release."; exit 1; } ;;
-            *) echo "Releases need a real signing identity so macOS keeps EchoVoice's permissions; this build is $mode-signed."; exit 1 ;;
-          esac
+          submission="$(sed -n 's/^notary_submission=//p' signing.txt)"
+          [[ "$mode" == "developer-id" ]] || { echo "Releases require Developer ID signing." >&2; exit 1; }
+          [[ -n "$submission" && "$submission" == "$NOTARY_SUBMISSION" ]] || { echo "The archive's submission does not match the notarization Apple accepted." >&2; exit 1; }
+          echo "Apple accepted notarization $submission for this archive."
           unzip -p EchoVoice.zip EchoVoice.app/Contents/Info.plist > shipped-Info.plist
           read -r shipped_version shipped_build shipped_key < <(python3 -c "import plistlib; d = plistlib.load(open('shipped-Info.plist', 'rb')); print(d['CFBundleShortVersionString'], d['CFBundleVersion'], d['SUPublicEDKey'])")
           [ "$shipped_version" = "$VERSION" ] && [ "$shipped_build" = "$BUILD" ]
