@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Sends a Developer ID-signed EchoVoice.app to Apple's notary service and staples the ticket.
-# Any answer but "Accepted" stops the build, so nothing unnotarized is published this way.
+# Sends a Developer ID-signed EchoVoice zip to Apple's notary service without waiting (no --wait), and
+# writes the submission ID to the given file. Apple can take from minutes to hours, so the
+# Linux "Wait for Apple notarization" job polls for the answer (Scripts/release/notary_status.py)
+# instead of keeping a macOS runner busy; the release refuses anything Apple hasn't accepted.
+# Nothing is stapled, so the tested zip is exactly the zip that ships; macOS checks the
+# notarization online the first time the app opens.
 # Needs NOTARY_KEY_PATH (an App Store Connect API key, .p8), NOTARY_KEY_ID and NOTARY_ISSUER_ID.
 set -euo pipefail
 
-APP="${1:?usage: notarize.sh <path to EchoVoice.app>}"
+ZIP="${1:?usage: notarize.sh <path to EchoVoice.zip> <submission ID file>}"
+ID_FILE="${2:?usage: notarize.sh <path to EchoVoice.zip> <submission ID file>}"
 for name in NOTARY_KEY_PATH NOTARY_KEY_ID NOTARY_ISSUER_ID; do
     if [[ -z "${!name:-}" ]]; then
         printf 'Developer ID builds must be notarized, but %s is not set.\n' "$name" >&2
@@ -12,24 +17,15 @@ for name in NOTARY_KEY_PATH NOTARY_KEY_ID NOTARY_ISSUER_ID; do
     fi
 done
 test -s "$NOTARY_KEY_PATH"
+test -s "$ZIP"
 
 WORK_DIR="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/echovoice-notarize.XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
-SUBMISSION="$WORK_DIR/$(basename "$APP" .app)-notarize.zip"
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$SUBMISSION"
 
-xcrun notarytool submit "$SUBMISSION" \
+xcrun notarytool submit "$ZIP" \
     --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
-    --wait --timeout 30m --output-format plist > "$WORK_DIR/result.plist"
-STATUS="$(/usr/libexec/PlistBuddy -c 'Print :status' "$WORK_DIR/result.plist")"
+    --output-format plist > "$WORK_DIR/result.plist"
 SUBMISSION_ID="$(/usr/libexec/PlistBuddy -c 'Print :id' "$WORK_DIR/result.plist")"
-printf 'Notarization %s: %s\n' "$SUBMISSION_ID" "$STATUS"
-if [[ "$STATUS" != "Accepted" ]]; then
-    xcrun notarytool log "$SUBMISSION_ID" \
-        --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" || true
-    exit 1
-fi
-
-xcrun stapler staple "$APP"
-xcrun stapler validate "$APP"
-spctl --assess --type execute --verbose=2 "$APP"
+[[ "$SUBMISSION_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || { echo "Apple's notary service returned no submission ID." >&2; exit 1; }
+printf '%s\n' "$SUBMISSION_ID" > "$ID_FILE"
+printf 'Sent to Apple for notarization: submission %s\n' "$SUBMISSION_ID"

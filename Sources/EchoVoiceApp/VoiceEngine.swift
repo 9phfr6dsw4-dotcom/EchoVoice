@@ -92,14 +92,14 @@ actor VoiceEngine {
         referenceText = transcript
     }
 
-    func speak(text: String, seed: UInt64) async throws -> PartResult {
+    func speak(text: String, direction: String?, seed: UInt64) async throws -> PartResult {
         guard let model, let reference else { throw EngineError.notLoaded }
         MLXRandom.seed(seed)
         Memory.cacheLimit = 512 * 1024 * 1024
         defer { Memory.clearCache() }
         var parameters = model.defaultGenerationParameters
         parameters.maxTokens = VoiceModel.breeze.maxStepsPerPart
-        let stream = model.generateStream(text: text, voice: nil, refAudio: reference,
+        let stream = model.generateStream(text: text, voice: direction, refAudio: reference,
             refText: referenceText, language: "English", generationParameters: parameters)
         var samples: [Float] = []
         var steps = 0

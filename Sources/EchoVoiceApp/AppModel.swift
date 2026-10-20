@@ -70,6 +70,10 @@ final class AppModel {
         get { storedScript }
         set { storedScript = newValue; defaults.set(newValue, forKey: Keys.script) }
     }
+    var direction: String {
+        get { storedDirection }
+        set { storedDirection = newValue; defaults.set(newValue, forKey: Keys.direction) }
+    }
     var selectedVoiceID: UUID? {
         get { storedVoiceID }
         set { storedVoiceID = newValue; defaults.set(newValue?.uuidString, forKey: Keys.voice) }
@@ -105,6 +109,7 @@ final class AppModel {
     let playback = Playback()
 
     private var storedScript: String
+    private var storedDirection: String
     private var storedModel: VoiceModel
     private var storedVoiceID: UUID?
     private var storedPlayWhenDone: Bool
@@ -113,6 +118,7 @@ final class AppModel {
     enum Keys {
         static let model = "EchoVoice.model"
         static let script = "EchoVoice.script"
+        static let direction = "EchoVoice.direction"
         static let voice = "EchoVoice.voice"
         static let playWhenDone = "EchoVoice.playWhenDone"
         static let unloadMinutes = "EchoVoice.unloadMinutes"
@@ -138,6 +144,7 @@ final class AppModel {
 
         storedModel = VoiceModel.restored(defaults.string(forKey: Keys.model))
         storedScript = defaults.string(forKey: Keys.script) ?? ""
+        storedDirection = defaults.string(forKey: Keys.direction) ?? ""
         storedVoiceID = defaults.string(forKey: Keys.voice).flatMap(UUID.init(uuidString:))
         storedPlayWhenDone = defaults.object(forKey: Keys.playWhenDone) as? Bool ?? true
         storedUnloadMinutes = defaults.object(forKey: Keys.unloadMinutes) as? Int ?? 10
@@ -214,7 +221,7 @@ final class AppModel {
             errorMessage = "Add a voice first (Voices → Add Voice…)."
             return
         }
-        start(script: script, voice: voice, seed: UInt64.random(in: 0 ... UInt64.max))
+        start(script: script, direction: direction, voice: voice, seed: UInt64.random(in: 0 ... UInt64.max))
     }
 
     /// Generates a recording again from Recordings: the same take (same seed) or a new one. A recording
@@ -229,9 +236,10 @@ final class AppModel {
         storedModel = .breeze
         defaults.set(storedModel.rawValue, forKey: Keys.model)
         script = item.script
+        direction = item.direction ?? ""
         selectedVoiceID = voice.id
         section = .generate
-        start(script: item.script, voice: voice, seed: sameTake ? item.seed : UInt64.random(in: 0 ... UInt64.max))
+        start(script: item.script, direction: item.direction ?? "", voice: voice, seed: sameTake ? item.seed : UInt64.random(in: 0 ... UInt64.max))
         if let previous = item.model, previous != .breeze {
             statusMessage = "This recording used \(previous.title). The new take uses Breeze and will sound different."
         }
@@ -241,7 +249,7 @@ final class AppModel {
         generationTask?.cancel()
     }
 
-    private func start(script: String, voice: Voice, seed: UInt64) {
+    private func start(script: String, direction: String, voice: Voice, seed: UInt64) {
         guard generationTask == nil, !isManagingModel else { return }
         guard downloadTask == nil else {
             errorMessage = "The voice model is still downloading. Generate audio when the download finishes."
@@ -263,9 +271,11 @@ final class AppModel {
         statusMessage = nil
         unloadTask?.cancel()
         playback.stop()
+        let trimmedDirection = direction.trimmingCharacters(in: .whitespacesAndNewlines)
         let clip = clipURL(for: voice)
         generationTask = Task { [weak self] in
-            await self?.run(script: script, plan: plan, voice: voice, clip: clip, generationModel: generationModel)
+            await self?.run(script: script, plan: plan, voice: voice, clip: clip,
+                            direction: trimmedDirection.isEmpty ? nil : trimmedDirection, generationModel: generationModel)
             self?.generationTask = nil
             self?.progress = nil
             self?.refreshModelState()
@@ -273,7 +283,7 @@ final class AppModel {
         }
     }
 
-    private func run(script: String, plan: GenerationPlan, voice: Voice, clip: URL, generationModel: VoiceModel) async {
+    private func run(script: String, plan: GenerationPlan, voice: Voice, clip: URL, direction: String?, generationModel: VoiceModel) async {
         let started = Date()
         do {
             progress = GenerationProgress(part: 0, parts: plan.parts.count, secondsLeft: nil, stage: "Getting your voice ready…")
@@ -292,7 +302,7 @@ final class AppModel {
                     secondsLeft: plan.remainingSeconds(finishedParts: index, elapsed: Date().timeIntervalSince(partsStarted)),
                     stage: plan.parts.count == 1 ? "Speaking…" : "Speaking part \(index + 1) of \(plan.parts.count)…"
                 )
-                let result = try await engine.speak(text: part.text, seed: plan.seed(forPart: index))
+                let result = try await engine.speak(text: part.text, direction: direction, seed: plan.seed(forPart: index))
                 pieces.append(result.samples)
                 if result.steps >= generationModel.maxStepsPerPart { cutOff.append(index + 1) }
             }
@@ -304,7 +314,7 @@ final class AppModel {
             try WAVFile.write(samples: samples, sampleRate: VoiceEngine.sampleRate, to: url)
             let item = HistoryItem(
                 date: date, voiceID: voice.id, voiceName: voice.name, script: script.trimmingCharacters(in: .whitespacesAndNewlines),
-                direction: nil, filePath: url.path,
+                direction: direction, filePath: url.path,
                 seconds: AudioTools.duration(sampleCount: samples.count, sampleRate: VoiceEngine.sampleRate),
                 seed: plan.seed, cutOffParts: cutOff, generationSeconds: Date().timeIntervalSince(started), model: generationModel
             )
@@ -327,7 +337,7 @@ final class AppModel {
     // MARK: New script
 
     /// What New Script cleared, so its "Undo" can put it back.
-    private var newScriptUndo: (message: String, script: String)?
+    private var newScriptUndo: (message: String, script: String, direction: String)?
 
     /// True while the "New script started." message (with its Undo button) is showing.
     var canUndoNewScript: Bool {
@@ -335,23 +345,25 @@ final class AppModel {
         return undo.message == statusMessage
     }
 
-    /// Clears the script for a fresh start. The voice, the latest audio and the saved recordings
-    /// stay as they are.
+    /// Clears the script and delivery style for a fresh start. The voice, latest audio and
+    /// saved recordings stay as they are.
     func newScript() {
         // Nothing to clear: keep the earlier undo copy instead of replacing it with blanks.
-        guard !isGenerating, !script.isEmpty else { return }
+        guard !isGenerating, !(script.isEmpty && direction.isEmpty) else { return }
         let message = "New script started."
-        newScriptUndo = (message: message, script: script)
+        newScriptUndo = (message: message, script: script, direction: direction)
         script = ""
+        direction = ""
         errorMessage = nil
         statusMessage = message
     }
 
-    /// Puts back the script that New Script cleared.
+    /// Puts back the script and delivery style that New Script cleared.
     func undoNewScript() {
         guard let undo = newScriptUndo else { return }
         newScriptUndo = nil
         script = undo.script
+        direction = undo.direction
         statusMessage = "Script restored."
     }
 
@@ -495,6 +507,7 @@ final class AppModel {
 
     func useScript(_ item: HistoryItem) {
         script = item.script
+        direction = item.direction ?? ""
         if library.voice(item.voiceID) != nil { selectedVoiceID = item.voiceID }
         section = .generate
     }

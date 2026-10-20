@@ -11,8 +11,8 @@ VERIFY_DIR="dist/verify-extracted"
 ZIP="dist/EchoVoice.zip"
 DERIVED=".xcbuild"
 PRODUCTS="$DERIVED/Build/Products/Release"
-VERSION="0.7.0"
-BUILD="9"
+VERSION="0.8.0"
+BUILD="10"
 SIGNING_REPORT="dist/signing.txt"
 SIGN_MODE="${SIGN_MODE:-adhoc}"
 export SIGN_MODE
@@ -45,7 +45,7 @@ xcodebuild build \
 
 test -x "$PRODUCTS/EchoVoiceApp" || fail "the built program is missing at $PRODUCTS/EchoVoiceApp"
 
-rm -rf "$APP" "$ICONSET" "$ICON_OUT" "$VERIFY_DIR" "$ZIP" "$ZIP.sha256" "$SIGNING_REPORT" "dist/notarize"
+rm -rf "$APP" "$ICONSET" "$ICON_OUT" "$VERIFY_DIR" "$ZIP" "$ZIP.sha256" "$SIGNING_REPORT" "dist/notary-submission.txt"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 install -m 755 "$PRODUCTS/EchoVoiceApp" "$APP/Contents/MacOS/EchoVoice"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
@@ -127,12 +127,6 @@ expect_plist "$APP" SUFeedURL "https://github.com/9phfr6dsw4-dotcom/EchoVoice/re
 # Signing is the last change to the app; everything after only zips, checks and hashes it.
 bash Scripts/sign-app.sh "$APP"
 
-NOTARIZED="no"
-if [[ "$SIGN_MODE" == "developer-id" ]]; then
-    bash Scripts/notarize.sh "$APP"
-    NOTARIZED="yes"
-fi
-
 # Verify the exact ZIP people download.
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 mkdir -p "$VERIFY_DIR"
@@ -145,9 +139,11 @@ test -s "$EXTRACTED/Contents/Resources/Assets.car" || fail "Assets.car (the macO
 expect_plist "$EXTRACTED" CFBundleShortVersionString "$VERSION"
 expect_plist "$EXTRACTED" CFBundleIconName AppIcon
 codesign --verify --deep --strict "$EXTRACTED"
-if [[ "$NOTARIZED" == "yes" ]]; then
-    xcrun stapler validate "$EXTRACTED"
-    spctl --assess --type execute --verbose=2 "$EXTRACTED"
+# Check the hardened runtime and microphone entitlement on the exact shipped app.
+if [[ "$SIGN_MODE" == "developer-id" ]]; then
+    codesign --display --verbose "$EXTRACTED" 2>&1 | grep -q 'flags=.*runtime' || fail "the app has no hardened runtime"
+    codesign --display --entitlements - --xml "$EXTRACTED" > dist/shipped-entitlements.plist 2>/dev/null
+    /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' dist/shipped-entitlements.plist | grep -Fx true || fail "microphone entitlement is missing"
 fi
 test -x "$EXTRACTED/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" || fail "Sparkle's Autoupdate helper is missing inside the ZIP"
 expect_plist "$EXTRACTED" CFBundleVersion "$BUILD"
@@ -155,10 +151,15 @@ expect_plist "$EXTRACTED" SUFeedURL "https://github.com/9phfr6dsw4-dotcom/EchoVo
 file "$EXTRACTED/Contents/MacOS/EchoVoice"
 bash Scripts/write-checksum-sidecar.sh "$ZIP"
 ( cd dist && shasum -a 256 -c EchoVoice.zip.sha256 )
+# Submit the already-tested bytes. Waiting happens on Linux; nothing is stapled or re-zipped.
+NOTARY_SUBMISSION=""
+if [[ "$SIGN_MODE" == "developer-id" ]]; then
+    bash Scripts/notarize.sh "$ZIP" dist/notary-submission.txt
+    NOTARY_SUBMISSION="$(cat dist/notary-submission.txt)"
+fi
 {
     printf 'mode=%s\n' "$SIGN_MODE"
-    printf 'notarized=%s\n' "$NOTARIZED"
-    codesign --display --requirements - "$EXTRACTED" 2>/dev/null | sed -n 's/^designated => /requirement=/p'
+    printf 'notary_submission=%s\n' "$NOTARY_SUBMISSION"
 } > "$SIGNING_REPORT"
 cat "$SIGNING_REPORT"
 printf 'Verified package: %s\n' "$ZIP"

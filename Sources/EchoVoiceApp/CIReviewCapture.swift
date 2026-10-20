@@ -45,7 +45,7 @@ enum CIReviewCapture {
         try WAVFile.write(samples: samples, sampleRate: 24_000, to: audio)
         let script = "Some stories deserve to be heard.\n\nThe quiet moments. The unexpected turns. The words that stay with us long after the room falls silent."
         let take = HistoryItem(voiceID: voice.id, voiceName: voice.name, script: script,
-                               direction: nil, filePath: audio.path, seconds: 18, seed: 42,
+                               direction: "calm, warm", filePath: audio.path, seconds: 18, seed: 42,
                                cutOffParts: [], generationSeconds: 24)
         let store = LibraryStore(fileURL: fixture.appendingPathComponent("library.json"))
         try store.save(LibraryState(voices: [voice, second], history: [take]))
@@ -54,6 +54,29 @@ enum CIReviewCapture {
         defaults.set(voice.id.uuidString, forKey: AppModel.Keys.voice)
         defaults.set(fixture.path, forKey: AppModel.Keys.outputFolder)
         let model = AppModel(defaults: defaults, supportRoot: fixture)
+        model.useScript(take)
+        guard model.direction == "calm, warm", defaults.string(forKey: AppModel.Keys.direction) == "calm, warm" else {
+            throw CaptureError(message: "Use Script did not restore the saved delivery style.")
+        }
+        let reopened = AppModel(defaults: defaults, supportRoot: fixture)
+        guard reopened.direction == model.direction else {
+            throw CaptureError(message: "Delivery style did not survive reopening the app.")
+        }
+        model.newScript()
+        guard model.script.isEmpty, model.direction.isEmpty, model.canUndoNewScript else {
+            throw CaptureError(message: "New Script did not clear the script and delivery style.")
+        }
+        model.undoNewScript()
+        guard model.script == script, model.direction == take.direction else {
+            throw CaptureError(message: "Undo did not restore the script and delivery style.")
+        }
+        var unstyled = take
+        unstyled.direction = nil
+        model.useScript(unstyled)
+        guard model.direction.isEmpty else {
+            throw CaptureError(message: "Use Script kept an unrelated delivery style for an unstyled recording.")
+        }
+        model.useScript(take)
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         application.finishLaunching()
